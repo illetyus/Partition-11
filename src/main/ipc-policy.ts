@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * Default-deny frame origin policy. The expected absolute file path prevents
- * arbitrary local file:// content from invoking privileged main-process APIs.
+ * arbitrary local file:// content from invoking main-process APIs.
  */
 export function isAllowedFrame(
   actualFrameUrl: string | undefined,
@@ -14,6 +14,7 @@ export function isAllowedFrame(
 
   try {
     const actual = new URL(actualFrameUrl);
+    if (actual.search || actual.hash) return false;
 
     if (developmentUrl) {
       const expectedDev = new URL(developmentUrl);
@@ -21,8 +22,7 @@ export function isAllowedFrame(
         actual.protocol === "http:" &&
         actual.hostname === "127.0.0.1" &&
         actual.origin === expectedDev.origin &&
-        actual.pathname === "/" &&
-        actual.search === ""
+        actual.pathname === "/"
       ) {
         return true;
       }

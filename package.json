@@ -7,7 +7,7 @@
   "main": "dist/main/main/main.js",
   "scripts": {
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "test:main": "npm run build:main && node --test dist/main/main/ipc-policy.test.js",
+    "test:main": "npm run build:main && node --test dist/main/main/ipc-policy.test.js dist/main/main/preload-contract.test.js dist/main/main/production-csp.test.js",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
     "build": "npm run typecheck && npm run build:main && npm run build:renderer",
@@ -45,7 +45,9 @@
       "LICENSE"
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "artifactName": "Partition-11-${version}-${arch}.${ext}"
     },
     "nsis": {
