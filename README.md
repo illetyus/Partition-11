@@ -2,7 +2,7 @@
 
 Modern, Windows 11–oriented ext2/ext3/ext4 disk management desktop application.
 
-**Status:** Phase 0 foundations implemented; Phase 1 Windows 11 UI work in progress. **No disk reads, physical disk writes, or repair/format operations are implemented or enabled.**
+**Status:** Phase 0 foundations implemented; Phase 1 Windows 11 UI implementation complete in source, pending physical-device and mixed-DPI verification. **No disk reads, physical disk writes, or repair/format operations are implemented or enabled.**
 
 Architecture: Electron + React + TypeScript + Fluent UI (desktop shell), isolated Rust core (operation policies and future filesystem adapters), Windows privileged agent (future; explicitly disabled). Linux/WSL is not a runtime prerequisite.
 
@@ -21,3 +21,19 @@ and is **not** an end-user installer smoke test.
 
 See [P1 Windows 11 acceptance tests](docs/P1_WINDOWS11_UI.md) and
 [reproducible build policy](docs/P0_REPRODUCIBLE_BUILDS.md).
+
+## UI preview on GitHub Windows Actions
+
+The Windows UI workflow runs the compiled Electron renderer with the compiled
+sandboxed preload and synthetic, **clearly marked sample devices**. It tests
+sample-disk navigation, native theme selection, the advanced-settings panel,
+responsive sizes, and the permanently disabled format action. Successful runs
+publish light/dark/compact PNG screenshots plus a Windows unpacked preview
+archive. They do not authorize disk reads/writes or establish true multi-monitor
+DPI compatibility.
+
+See [UI acceptance matrix](docs/P1_UI_ACCEPTANCE.md) and
+[Windows UI Actions](.github/workflows/windows-ui.yml).
+
+The UI preview is not a functional disk formatter; physical-device operations
+require later separate safety-gated development.

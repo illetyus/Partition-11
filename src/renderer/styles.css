@@ -31,7 +31,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   min-height: 100vh;
   width: 100%;
 }
-.partition-theme:has(.theme-toggle[title="Açık temaya geç"]) {
+.partition-theme[data-theme="dark"] {
   --p11-blue: #5faefa;
   --p11-blue-hover: #76baff;
   --p11-blue-faint: #1d364e;
@@ -294,3 +294,15 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .usage-fill { background: Highlight; forced-color-adjust: none; }
   .format-button:disabled { border: 1px solid GrayText; }
 }
+
+/* P1 final polish: keyboard visibility, long disk names and caption-safe resizing. */
+.topbar-brand { overflow: hidden; }
+.app-title { overflow: hidden; text-overflow: ellipsis; }
+.disk-item-copy { overflow-wrap: anywhere; }
+.disk-item-copy strong { overflow-wrap: anywhere; }
+.summary-title h2, .summary-title p { overflow-wrap: anywhere; }
+.format-button:disabled { filter: grayscale(.15); }
+.partition-theme[data-theme="dark"] .format-button:disabled { color: #fff; }
+@media (max-width: 980px) { .sidebar-title-row { flex-wrap: wrap; } .disk-item-copy strong { font-size: 14px; } }
+@media (max-width: 800px) { .disk-list { scrollbar-width: thin; padding-bottom: 6px; } }
+@media (max-width: 560px) { .app-title { font-size: 14px; } .preview-pill { padding: 5px 7px; } .topbar { padding: 0 11px; } }

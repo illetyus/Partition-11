@@ -7,12 +7,14 @@ import type { Partition11Bridge } from "../shared/protocol";
 const CHANNELS = Object.freeze({
   status: "partition11:status",
   displayInfo: "partition11:display-info",
-  displayChanged: "partition11:display-changed"
+  displayChanged: "partition11:display-changed",
+  titlebarTheme: "partition11:titlebar-theme"
 });
 
 const api: Partition11Bridge = Object.freeze({
   getStatus: () => ipcRenderer.invoke(CHANNELS.status),
   getDisplayInfo: () => ipcRenderer.invoke(CHANNELS.displayInfo),
+  setTitlebarTheme: (theme: "light" | "dark") => ipcRenderer.invoke(CHANNELS.titlebarTheme, theme),
   onDisplayChanged(listener: () => void) {
     const handler = () => listener();
     ipcRenderer.on(CHANNELS.displayChanged, handler);

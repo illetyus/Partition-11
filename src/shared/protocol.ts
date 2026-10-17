@@ -5,7 +5,8 @@
 export const IPC = Object.freeze({
   STATUS: "partition11:status",
   DISPLAY_INFO: "partition11:display-info",
-  DISPLAY_CHANGED: "partition11:display-changed"
+  DISPLAY_CHANGED: "partition11:display-changed",
+  TITLEBAR_THEME: "partition11:titlebar-theme"
 } as const);
 
 export type AppStatus = Readonly<{
@@ -33,5 +34,6 @@ export type DisplayInfo = Readonly<{
 export interface Partition11Bridge {
   getStatus(): Promise<AppStatus>;
   getDisplayInfo(): Promise<DisplayInfo>;
+  setTitlebarTheme(theme: "light" | "dark"): Promise<void>;
   onDisplayChanged(listener: () => void): () => void;
 }

@@ -52,8 +52,11 @@ only after an explicit architecture decision and license review.
 
 P0 foundation is implemented, baseline GitHub CI passed on Windows and Linux.
 Dependency locks are generated on the separate P0 branch for review.
-P1 preload/CSP/DPI-status source was merged with PR #4; hands-on Windows 11
-multi-monitor testing and packaged installer smoke testing remain unverified.
+P1 source design follows the final approved reference, including a mock disk
+sidebar, format form, advanced settings and native Windows caption overlay.
+A real Electron UI smoke workflow captures sample-device Windows screenshots
+and compiles an unpacked preview; mixed-monitor DPI and a signed installer
+remain unverified.
 All physical-device and image operations remain disabled.
 
 ## Next actions
