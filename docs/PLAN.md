@@ -56,7 +56,7 @@ only after an explicit architecture decision and license review.
 - CrystalDiskMark provides familiar workload/UI references and internally invokes DiskSpd: https://github.com/hiyohiyo/CrystalDiskMark
 - fio (GPLv2) is a differential reference, not a bundled engine: https://github.com/axboe/fio
 - P2.5 specifications and release gates: [P2.5 benchmark plan](P2_5_DISK_BENCHMARK.md) and [ADR-0003](decisions/0003-diskspd-file-targets.md).
-- No benchmark binary, raw-disk access or executable benchmark logic is added in this planning change.
+- A P2.5A preview UI and typed, disabled benchmark availability channel are now being implemented; no benchmark executable, raw access, or live disk I/O is enabled.
 
 ## Phase status
 

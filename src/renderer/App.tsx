@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { FluentProvider, webDarkTheme, webLightTheme } from "@fluentui/react-components";
 import type { AppStatus, DisplayInfo } from "../shared/protocol";
 import { sampleDisks, validateExtLabel, type SampleDisk } from "./previewData";
+import { BenchmarkPanel } from "./BenchmarkPanel";
+import { BENCHMARK_PREVIEW_AVAILABILITY, type BenchmarkAvailability } from "../shared/benchmark";
 
 type ThemePreference = "system" | "light" | "dark";
 type Glyph = "drive" | "usb" | "lock" | "moon" | "sun" | "shield" | "alert" | "sliders" | "chevron" | "check";
@@ -108,6 +110,8 @@ export function App() {
   const [preference, setPreference] = useState<ThemePreference>(initialTheme);
   const dark = preference === "dark" || (preference === "system" && systemDark);
   const [selectedId, setSelectedId] = useState(sampleDisks[0].id);
+  const [activeScreen, setActiveScreen] = useState<"format" | "benchmark">("format");
+  const [benchmarkAvailability, setBenchmarkAvailability] = useState<BenchmarkAvailability>(BENCHMARK_PREVIEW_AVAILABILITY);
   const [label, setLabel] = useState("LinuxData");
   const [advanced, setAdvanced] = useState(false);
   const [blockSize, setBlockSize] = useState("4096");
@@ -136,6 +140,15 @@ export function App() {
     window.partition11.getStatus()
       .then(value => { if (live) setStatus(value); })
       .catch(() => { if (live) setBridgeUnavailable(true); });
+    window.partition11.getBenchmarkAvailability()
+      .then(value => {
+        // Fail closed: the only P2.5A capability state allowed is preview.
+        if (live && value.protocolVersion === 1 && value.mode === "preview" &&
+            !value.engineAvailable && !value.canRead && !value.canWrite) {
+          setBenchmarkAvailability(value);
+        }
+      })
+      .catch(() => { if (live) setBenchmarkAvailability(BENCHMARK_PREVIEW_AVAILABILITY); });
     const refresh = () => {
       window.partition11.getDisplayInfo()
         .then(value => { if (live) setDisplay(value); })
@@ -189,11 +202,17 @@ export function App() {
 
           <main className="workspace">
             <div className="workspace-inner" data-testid="format-workspace">
+              <nav className="workspace-tabs" aria-label="Disk işlemleri">
+                <button type="button" data-testid="screen-tab-format" className={activeScreen === "format" ? "active" : ""} aria-current={activeScreen === "format" ? "page" : undefined} onClick={() => setActiveScreen("format")}>Biçimlendir</button>
+                <button type="button" data-testid="screen-tab-benchmark" className={activeScreen === "benchmark" ? "active" : ""} aria-current={activeScreen === "benchmark" ? "page" : undefined} onClick={() => setActiveScreen("benchmark")}>Benchmark</button>
+              </nav>
               <div className="page-heading">
-                <h1>Biçimlendir</h1>
-                <p>Diski Linux için hazırla.</p>
+                <h1>{activeScreen === "format" ? "Biçimlendir" : "Disk Benchmark"}</h1>
+                <p>{activeScreen === "format" ? "Diski Linux için hazırla." : "Okuma ve yazma performansı · Güvenli önizleme"}</p>
               </div>
-
+              {activeScreen === "benchmark" ? (
+                <BenchmarkPanel disk={selected} availability={benchmarkAvailability}/>
+              ) : (<>
               <DiskSummary disk={selected}/>
 
               <section className="surface format-card" aria-label="Biçimlendirme seçenekleri — yalnızca önizleme">
@@ -262,6 +281,7 @@ export function App() {
                 </button>
               </div>
               <p className="demo-explanation">Önizleme modu: Disk bilgileri örnektir; gerçek disklere erişilmez ve biçimlendirme kapalıdır.</p>
+              </>)}
             </div>
           </main>
         </div>

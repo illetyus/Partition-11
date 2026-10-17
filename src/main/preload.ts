@@ -8,12 +8,14 @@ const CHANNELS = Object.freeze({
   status: "partition11:status",
   displayInfo: "partition11:display-info",
   displayChanged: "partition11:display-changed",
-  titlebarTheme: "partition11:titlebar-theme"
+  titlebarTheme: "partition11:titlebar-theme",
+  benchmarkAvailability: "partition11:benchmark-availability"
 });
 
 const api: Partition11Bridge = Object.freeze({
   getStatus: () => ipcRenderer.invoke(CHANNELS.status),
   getDisplayInfo: () => ipcRenderer.invoke(CHANNELS.displayInfo),
+  getBenchmarkAvailability: () => ipcRenderer.invoke(CHANNELS.benchmarkAvailability),
   setTitlebarTheme: (theme: "light" | "dark") => ipcRenderer.invoke(CHANNELS.titlebarTheme, theme),
   onDisplayChanged(listener: () => void) {
     const handler = () => listener();

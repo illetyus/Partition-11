@@ -4,6 +4,7 @@ import {
   type IpcMainInvokeEvent
 } from "electron";
 import { IPC, type AppStatus, type DisplayInfo } from "../shared/protocol";
+import { BENCHMARK_PREVIEW_AVAILABILITY } from "../shared/benchmark";
 import { isAllowedFrame } from "./ipc-policy";
 
 const developmentUrl = process.env.PARTITION11_DEV_URL;
@@ -123,6 +124,10 @@ app.whenReady().then(() => {
   ipcMain.handle(IPC.DISPLAY_INFO, event => {
     if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
     return currentDisplayInfo();
+  });
+  ipcMain.handle(IPC.BENCHMARK_AVAILABILITY, event => {
+    if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
+    return BENCHMARK_PREVIEW_AVAILABILITY;
   });
   ipcMain.handle(IPC.TITLEBAR_THEME, (event, theme: unknown) => {
     if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
