@@ -151,7 +151,7 @@ async function main() {
   await new Promise(resolve => setTimeout(resolve, 350));
   await js("document.querySelector('.warning-box').scrollIntoView({block: 'start'})");
   check(await js("document.querySelector('.warning-box')?.textContent.includes('tüm dosyaları siler')"), "Destructive-action warning is visible");
-  check(await js("document.querySelector('[data-testid=\\\"format-button\\\"]').disabled"), "Format is still disabled in the bottom action area");
+  check(await js("document.querySelector('[data-testid=format-button]').disabled"), "Format is still disabled in the bottom action area");
   await snap("06-warning-and-action");
 
   fs.writeFileSync(path.join(output, "ui-smoke-report.json"), JSON.stringify(report, null, 2));
