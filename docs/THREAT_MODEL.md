@@ -28,6 +28,23 @@ disk serials, Windows admin privileges, release/signing credentials.
 | Data exfiltration | no telemetry, no external content, blocked web navigation |
 | False assurance from image tests | physical disk gate requires dedicated destructive test devices |
 
+## P2.5 benchmark threat model
+
+| Risk | Preventive control |
+|---|---|
+| DiskSpd raw device writes or overwrite of an existing file | Only an app-created exclusive scratch file may be targeted. Never pass raw disk, drive-letter-only or arbitrary user target paths |
+| CLI/XML command injection | Predefined typed profiles and direct process launch without a shell |
+| Symlink/junction/reparse-point or device swap | Validate opened handle, reparse policy and stable volume identity before launching |
+| Wear, thermal load, disk exhaustion | Bound test file size, repetitions, duration and estimated bytes written, require explicit consent |
+| Child process outliving cancellation | Kill the owned process tree/Job Object, enforce strict timeout |
+| Crash leftovers or accidental cleanup of user data | Track exact owned file identity, no wildcard or recursive deletions |
+| Supply-chain tampering | Signed/reproducible provenance where possible, pinned version and SHA-256, no runtime executable downloads |
+| Misleading metrics | Report file-backed scope, cache mode, workload, filesystem, engine version, sample count |
+
+Benchmark writes are ordinary filesystem writes to a disposable, application-
+owned file; they do not grant raw-write privileges. The P5 raw-disk policy
+remains unchanged.
+
 ## Required review before P5
 
 Implement and test Windows raw storage access, safe privilege transitions,
