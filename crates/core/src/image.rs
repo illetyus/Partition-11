@@ -86,6 +86,10 @@ impl ReadOnlyImage {
         self.len
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     /// Bounded, exact byte read. Rejects short reads and file length changes.
     pub fn read_at(&mut self, offset: u64, length: usize) -> Result<Vec<u8>, ImageReadError> {
         if length == 0 || length > MAX_SINGLE_READ {
