@@ -1,228 +1,267 @@
 import { useEffect, useState } from "react";
-import {
-  Badge,
-  Button,
-  Card,
-  FluentProvider,
-  Select,
-  Spinner,
-  Text,
-  webDarkTheme,
-  webLightTheme
-} from "@fluentui/react-components";
+import { FluentProvider, webDarkTheme, webLightTheme } from "@fluentui/react-components";
 import type { AppStatus, DisplayInfo } from "../shared/protocol";
+import { sampleDisks, validateExtLabel, type SampleDisk } from "./previewData";
 
 type ThemePreference = "system" | "light" | "dark";
-const PREFERENCE_KEY = "partition11.theme";
+type Glyph = "drive" | "usb" | "lock" | "moon" | "sun" | "shield" | "alert" | "sliders" | "chevron" | "check";
+const THEME_KEY = "partition11.theme";
 
-const phaseCards = [
-  {
-    number: "01",
-    title: "Disk keşfi",
-    description: "Fiziksel diskleri, GPT ve MBR bölümlerini salt okunur inceleme.",
-    state: "P2"
-  },
-  {
-    number: "02",
-    title: "ext2 / ext3 / ext4",
-    description: "Bölüm özellikleri, UUID, superblock ve dosya sistemi bilgileri.",
-    state: "P3"
-  },
-  {
-    number: "03",
-    title: "Güvenli işlemler",
-    description: "Test edilmiş imaj işlemleri ve bağımsız doğrulamadan sonra fiziksel yazma.",
-    state: "P4+"
-  }
-];
-
-function readThemePreference(): ThemePreference {
-  try {
-    const value = localStorage.getItem(PREFERENCE_KEY);
-    return value === "dark" || value === "light" ? value : "system";
-  } catch {
-    return "system";
-  }
+function Icon({ name, size = 20 }: { name: Glyph; size?: number }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const art: Record<Glyph, React.ReactNode> = {
+    drive: <><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 13h16M7 9h.01M10 9h.01"/></>,
+    usb: <><path d="M12 3v12m0-12 3 3m-3-3L9 6M12 15l-5-4m5 4 5-4M7 11H5v3h3v-3m9 0v-2h3v3h-3z"/><circle cx="12" cy="18" r="2"/></>,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></>,
+    moon: <path d="M20.6 13a8.5 8.5 0 0 1-9.6-9.6A8.5 8.5 0 1 0 20.6 13Z"/>,
+    sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></>,
+    shield: <><path d="M12 2 4.5 5v6.6c0 5 3 8.2 7.5 10.4 4.5-2.2 7.5-5.4 7.5-10.4V5Z"/><path d="m9 12 2 2 4-4"/></>,
+    alert: <><path d="M10.2 4a2 2 0 0 1 3.6 0l8 14a2 2 0 0 1-1.8 3H4a2 2 0 0 1-1.8-3Z"/><path d="M12 9v5m0 3h.01"/></>,
+    sliders: <><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></>,
+    chevron: <path d="m6 9 6 6 6-6"/>,
+    check: <path d="m5 12 4 4L19 6"/>
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false" {...common}>{art[name]}</svg>;
 }
 
-function useSystemDark(): boolean {
+function useSystemDark() {
   const [dark, setDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
-
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const listener = (event: MediaQueryListEvent) => setDark(event.matches);
-    media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
+    const callback = (event: MediaQueryListEvent) => setDark(event.matches);
+    media.addEventListener("change", callback);
+    return () => media.removeEventListener("change", callback);
   }, []);
-
   return dark;
+}
+
+function initialTheme(): ThemePreference {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "dark" || saved === "light") return saved;
+  } catch {
+    // Private/disabled storage: keep system theme.
+  }
+  return "system";
+}
+
+function DiskItem({
+  disk, selected, onSelect
+}: {
+  disk: SampleDisk;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={["disk-item", selected ? "selected" : "", disk.protected ? "protected" : ""].join(" ")}
+      aria-current={selected ? "true" : undefined}
+      disabled={disk.protected}
+      onClick={onSelect}
+      aria-label={disk.protected ? disk.name + ", sistem diski korumalı" : disk.name + ", örnek disk, " + disk.capacityLabel}
+    >
+      <span className="disk-item-icon"><Icon name={disk.protected ? "lock" : disk.kind === "usb" ? "usb" : "drive"} size={21}/></span>
+      <span className="disk-item-copy">
+        <strong>{disk.name}</strong>
+        <span>{disk.capacityLabel} · {disk.description}</span>
+        {disk.protected ? <span className="protected-label"><Icon name="lock" size={14}/> Sistem diski · Korumalı</span> : <span>Disk {disk.ordinal} · {disk.transport}</span>}
+      </span>
+    </button>
+  );
+}
+
+function DiskSummary({ disk }: { disk: SampleDisk }) {
+  const usage = disk.partition;
+  const usedPercent = usage ? Math.min(100, Math.max(0, 100 * usage.usedGb / disk.capacityGb)) : 0;
+  return (
+    <section className="surface disk-summary" aria-labelledby="selected-disk-heading">
+      <div className="summary-heading">
+        <span className="summary-drive-icon"><Icon name="drive" size={24}/></span>
+        <div className="summary-title">
+          <h2 id="selected-disk-heading">{disk.name}</h2>
+          <p>Disk {disk.ordinal} · {disk.interfaceLabel} · {disk.layout}</p>
+        </div>
+        <strong className="summary-capacity">{disk.capacityLabel}</strong>
+      </div>
+      {usage ? (
+        <div className="partition-block">
+          <div className="partition-head">
+            <strong>{usage.name} · Bölüm 1</strong>
+            <span>{usage.filesystem}</span>
+          </div>
+          <div className="usage-track" role="img" aria-label={usage.usedGbLabel + " kullanılıyor, " + usage.freeGbLabel + " boş"}>
+            <div className="usage-fill" style={{ width: usedPercent + "%" }} />
+          </div>
+          <div className="partition-usage"><span>{usage.usedGbLabel} kullanılıyor</span><span>{usage.freeGbLabel} boş</span></div>
+        </div>
+      ) : (
+        <div className="partition-block empty-partition">Bu örnek disk için bölüm bilgisi tanımlanmadı.</div>
+      )}
+    </section>
+  );
 }
 
 export function App() {
   const systemDark = useSystemDark();
-  const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
+  const [preference, setPreference] = useState<ThemePreference>(initialTheme);
+  const dark = preference === "dark" || (preference === "system" && systemDark);
+  const [selectedId, setSelectedId] = useState(sampleDisks[0].id);
+  const [label, setLabel] = useState("LinuxData");
+  const [advanced, setAdvanced] = useState(false);
+  const [blockSize, setBlockSize] = useState("4096");
+  const [reserved, setReserved] = useState("5");
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [display, setDisplay] = useState<DisplayInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const dark = themePreference === "dark" || (themePreference === "system" && systemDark);
+  const [bridgeUnavailable, setBridgeUnavailable] = useState(false);
+  const selected = sampleDisks.find(disk => disk.id === selectedId) ?? sampleDisks[0];
+  const labelResult = validateExtLabel(label);
 
   useEffect(() => {
-    let alive = true;
+    let live = true;
     if (!window.partition11) {
-      setError("Yerel Electron köprüsü bulunamadı. Güvenlik nedeniyle hiçbir disk işlemi sunulmuyor.");
+      setBridgeUnavailable(true);
       return;
     }
-
     window.partition11.getStatus()
-      .then(value => {
-        if (alive) setStatus(value);
-      })
-      .catch(() => {
-        if (alive) setError("Uygulama durumuna erişilemiyor. Güvenlik nedeniyle disk işlemleri kullanılamaz.");
-      });
-
-    const refreshDisplay = () => {
+      .then(value => { if (live) setStatus(value); })
+      .catch(() => { if (live) setBridgeUnavailable(true); });
+    const refresh = () => {
       window.partition11.getDisplayInfo()
-        .then(info => { if (alive) setDisplay(info); })
-        .catch(() => { if (alive) setDisplay(null); });
+        .then(value => { if (live) setDisplay(value); })
+        .catch(() => { if (live) setDisplay(null); });
     };
-
-    refreshDisplay();
-    const unsubscribe = window.partition11.onDisplayChanged(refreshDisplay);
-    return () => {
-      alive = false;
-      unsubscribe();
-    };
+    refresh();
+    const unsubscribe = window.partition11.onDisplayChanged(refresh);
+    return () => { live = false; unsubscribe(); };
   }, []);
 
-  function setAppearance(next: ThemePreference): void {
-    setThemePreference(next);
-    try {
-      localStorage.setItem(PREFERENCE_KEY, next);
-    } catch {
-      // Storage may be disabled; the in-memory preference still works.
-    }
+  function updateTheme(next: ThemePreference) {
+    setPreference(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch { /* nonpersistent preference */ }
+  }
+
+  function toggleTheme() {
+    updateTheme(dark ? "light" : "dark");
   }
 
   return (
-    <FluentProvider theme={dark ? webDarkTheme : webLightTheme} className="theme-root">
-      <div className="shell">
-        <aside className="sidebar" aria-label="Uygulama gezinme bölümü">
-          <div className="brand">
-            <div className="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-            <div>
-              <strong>Partition 11</strong>
-              <div className="brand-caption">Storage workspace</div>
-            </div>
+    <FluentProvider theme={dark ? webDarkTheme : webLightTheme} className="partition-theme">
+      <div className="app-frame">
+        <header className="topbar">
+          <div className="topbar-brand">
+            <span className="app-logo"><Icon name="drive" size={23}/></span>
+            <span className="app-title">Partition 11</span>
+            <span className="preview-pill">Önizleme</span>
           </div>
-
-          <nav className="nav" aria-label="Ana menü">
-            <button className="nav-item active" type="button" aria-current="page">Genel bakış</button>
-            <button className="nav-item" type="button" disabled>Diskler</button>
-            <button className="nav-item" type="button" disabled>Disk imajları</button>
-            <button className="nav-item" type="button" disabled>İşlem geçmişi</button>
-          </nav>
-
-          <div className="sidebar-bottom">
-            <label className="side-meta appearance-label" htmlFor="appearance">Görünüm tercihi</label>
-            <Select id="appearance" size="small" value={themePreference}
-              aria-label="Görünüm tercihi" onChange={event => setAppearance(event.target.value as ThemePreference)}>
-              <option value="system">Sistem ayarını kullan</option>
-              <option value="light">Açık tema</option>
-              <option value="dark">Koyu tema</option>
-            </Select>
-            <div className="side-meta">Geliştirme sürümü</div>
-            <div className="sidebar-version">Faz 0 · P1 hazırlığı</div>
-            <div className="side-meta">Fiziksel disk yazma kapalı</div>
+          <div className="topbar-actions">
+            <button type="button" className="theme-toggle" onClick={toggleTheme} title={dark ? "Açık temaya geç" : "Koyu temaya geç"} aria-label={dark ? "Açık temaya geç" : "Koyu temaya geç"}>
+              <Icon name={dark ? "sun" : "moon"} size={20}/>
+            </button>
+            <span className="window-control-spacer" aria-hidden="true" />
           </div>
-        </aside>
+        </header>
 
-        <main className="content" id="main-content">
-          <div className="topline">
-            <div className="eyebrow">PARTITION 11 / WORKSPACE</div>
-            <Badge appearance="tint" color="informative">Geliştirme ortamı</Badge>
-          </div>
-          <header className="heading">
-            <div>
-              <h1>Disk çalışma alanı</h1>
-              <p>Windows 11 için modern ext dosya sistemi yönetimi.</p>
+        <div className="main-layout">
+          <aside className="sidebar" aria-labelledby="disk-list-heading">
+            <div className="sidebar-title-row">
+              <h2 id="disk-list-heading">Diskler</h2>
+              <span className="sample-pill">Örnek veriler</span>
             </div>
-            <div className="heading-actions">
-              <Button appearance="secondary" disabled>Diskleri yenile</Button>
-              <Button appearance="primary" disabled>Yeni işlem</Button>
-            </div>
-          </header>
+            <nav className="disk-list" aria-label="Örnek diskler">
+              {sampleDisks.map(disk => (
+                <DiskItem key={disk.id} disk={disk} selected={disk.id === selectedId}
+                  onSelect={() => setSelectedId(disk.id)}/>
+              ))}
+            </nav>
+            <div className="sidebar-footer"><Icon name="shield" size={21}/><span>Sistem diski koruması açık</span></div>
+          </aside>
 
-          <section className="status-grid" aria-label="Uygulama durumu">
-            <Card className="stat-card">
-              <Text size={200} className="muted">Görüntülenen diskler</Text>
-              <div className="stat-number">—</div>
-              <Text size={200} className="muted">Tarama henüz uygulanmadı</Text>
-            </Card>
-            <Card className="stat-card">
-              <Text size={200} className="muted">Dosya sistemi motoru</Text>
-              <div className="stat-word">Bağlı değil</div>
-              <Text size={200} className="muted">Rust agent entegrasyonu bekleniyor</Text>
-            </Card>
-            <Card className="stat-card">
-              <Text size={200} className="muted">Güvenlik durumu</Text>
-              <div className="stat-word">İşlemler kapalı</div>
-              <Text size={200} className="muted">Disklere erişim ve yazma uygulanmadı</Text>
-            </Card>
-          </section>
-
-          <section className="workspace" aria-labelledby="disks-title">
-            <div className="section-top">
-              <div>
-                <h2 id="disks-title">Disk yerleşimi</h2>
-                <p>Gerçek aygıtları görüntüleme özelliği Faz 2'de açılacak.</p>
+          <main className="workspace">
+            <div className="workspace-inner">
+              <div className="page-heading">
+                <h1>Biçimlendir</h1>
+                <p>Diski Linux için hazırla.</p>
               </div>
-              <Badge appearance="outline">Hazırlanıyor</Badge>
-            </div>
-            <div className="disk-empty" role="status">
-              <div className="disk-graphic" aria-hidden="true">
-                <div className="disk-graphic-head"><span></span><span></span><span></span></div>
-                <div className="disk-graphic-track">
-                  <div></div><div></div><div></div>
+
+              <DiskSummary disk={selected}/>
+
+              <section className="surface format-card" aria-label="Biçimlendirme seçenekleri — yalnızca önizleme">
+                <div className="fields-grid">
+                  <div className="field">
+                    <label htmlFor="volume-label">Bölüm etiketi</label>
+                    <input id="volume-label" type="text" value={label} maxLength={32}
+                      onChange={event => setLabel(event.target.value)}
+                      aria-invalid={!labelResult.valid}
+                      aria-describedby="volume-label-hint"/>
+                    <small id="volume-label-hint" className={labelResult.valid ? "" : "field-error"}>
+                      {labelResult.valid ? "En fazla 16 bayt · " + labelResult.bytes + "/16 bayt" : labelResult.message}
+                    </small>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="filesystem">Dosya sistemi</label>
+                    <div className="locked-field">
+                      <span id="filesystem">EXT4</span>
+                      <span className="small-tag">Linux</span>
+                    </div>
+                    <small>Günlüklü dosya sistemi</small>
+                  </div>
+                </div>
+
+                <button type="button" className="advanced-toggle" aria-expanded={advanced}
+                  aria-controls="advanced-settings" onClick={() => setAdvanced(value => !value)}>
+                  <span><Icon name="sliders" size={20}/> Gelişmiş ayarlar</span>
+                  <span className={advanced ? "chevron rotated" : "chevron"}><Icon name="chevron" size={17}/></span>
+                </button>
+                {advanced && (
+                  <div id="advanced-settings" className="advanced-options">
+                    <div className="field">
+                      <label htmlFor="block-size">Blok boyutu</label>
+                      <select id="block-size" value={blockSize} onChange={event => setBlockSize(event.target.value)}>
+                        <option value="auto">Otomatik</option>
+                        <option value="1024">1 KiB</option>
+                        <option value="2048">2 KiB</option>
+                        <option value="4096">4 KiB</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label htmlFor="reserved">Ayrılmış alan</label>
+                      <select id="reserved" value={reserved} onChange={event => setReserved(event.target.value)}>
+                        <option value="0">%0</option>
+                        <option value="1">%1</option>
+                        <option value="5">%5</option>
+                      </select>
+                    </div>
+                    <p className="advanced-caption">Bu seçenekler yalnızca arayüzü denemek içindir. Henüz disk biçimlendirme motoruna bağlı değiller.</p>
+                  </div>
+                )}
+              </section>
+
+              <div className="warning-box" role="note">
+                <span className="warning-icon"><Icon name="alert" size={23}/></span>
+                <div><strong>Biçimlendirme seçilen bölümdeki tüm dosyaları siler.</strong>
+                  <p>Devam etmeden önce disk ve bölüm bilgilerini kontrol et.</p>
                 </div>
               </div>
-              <h3>Henüz disk taranmadı</h3>
-              <p>Veri güvenliği için fiziksel disk erişimi henüz etkin değil. Bu görünüm örnek disk veya bölüm bilgisi göstermez.</p>
-              <Button appearance="secondary" disabled>Disk analizi (Faz 2)</Button>
-            </div>
-          </section>
 
-          <section className="roadmap" aria-labelledby="roadmap-title">
-            <div className="section-top">
-              <div>
-                <h2 id="roadmap-title">Geliştirme kapsamı</h2>
-                <p>İşlevler ancak kendi güvenlik testlerini geçtikten sonra kullanıma açılacak.</p>
+              <div className="action-row">
+                <div className="privilege-note"><Icon name="shield" size={21}/> İşlem için yönetici izni gerekir</div>
+                <button className="format-button" type="button" disabled
+                  title="Önizleme modunda biçimlendirme kullanılamaz">
+                  <Icon name="drive" size={20}/> Biçimlendir
+                </button>
               </div>
+              <p className="demo-explanation">Önizleme modu: Bu ekrandaki disk bilgileri örnektir. Biçimlendir düğmesi güvenlik nedeniyle kapalıdır.</p>
             </div>
-            <div className="roadmap-grid">
-              {phaseCards.map(item => (
-                <Card key={item.number} className="roadmap-card">
-                  <div className="roadmap-head"><span>{item.number}</span><Badge appearance="outline">{item.state}</Badge></div>
-                  <h3>{item.title}</h3>
-                  <p>{item.description}</p>
-                </Card>
-              ))}
-            </div>
-          </section>
+          </main>
+        </div>
 
-          <footer className="footer" aria-live="polite">
-            <span className={status && !error ? "status-point ready" : "status-point"} aria-hidden="true"></span>
-            {error ? <Text>{error}</Text> : !status ? <><Spinner size="tiny" /><Text>Yerel uygulama doğrulanıyor…</Text></> :
-              <Text>v{status.appVersion} · {status.phase} · Disk yazma: kapalı · Agent: bağlı değil</Text>}
-            {display ? (
-              <Text className="display-info" aria-label="Geçerli monitör ölçek bilgisi">
-                Ekran: %{Math.round(display.scaleFactor * 100)} · Kullanılabilir alan: {display.workAreaWidth}×{display.workAreaHeight}
-                {display.highContrast ? " · Yüksek karşıtlık" : ""}
-              </Text>
-            ) : null}
-          </footer>
-        </main>
+        <footer className="statusbar">
+          <div className="status-left"><span className={status && !bridgeUnavailable ? "status-dot connected" : "status-dot"}/>
+            <span>{bridgeUnavailable ? "Tarayıcı önizlemesi" : status ? "Hazır" : "Arayüz yükleniyor"} · {sampleDisks.filter(disk => !disk.protected).length} örnek kullanılabilir disk</span>
+          </div>
+          <div className="status-right">{display ? "Ekran ölçeği: %" + Math.round(display.scaleFactor * 100) + " · " : ""}Arayüz önizlemesi · Gerçek disklere erişilmez</div>
+        </footer>
       </div>
     </FluentProvider>
   );
