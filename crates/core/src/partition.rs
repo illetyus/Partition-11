@@ -57,18 +57,14 @@ fn sector_size(sector: &[u8]) -> Result<u64, TableError> {
 }
 
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, TableError> {
-    let raw = bytes
-        .get(offset..offset + 4)
-        .ok_or(TableError::Truncated)?;
+    let raw = bytes.get(offset..offset + 4).ok_or(TableError::Truncated)?;
     let mut copy = [0; 4];
     copy.copy_from_slice(raw);
     Ok(u32::from_le_bytes(copy))
 }
 
 fn read_u64(bytes: &[u8], offset: usize) -> Result<u64, TableError> {
-    let raw = bytes
-        .get(offset..offset + 8)
-        .ok_or(TableError::Truncated)?;
+    let raw = bytes.get(offset..offset + 8).ok_or(TableError::Truncated)?;
     let mut copy = [0; 8];
     copy.copy_from_slice(raw);
     Ok(u64::from_le_bytes(copy))
@@ -80,8 +76,7 @@ fn crc32_ieee(bytes: &[u8]) -> u32 {
     for byte in bytes {
         let mut next = (checksum ^ u32::from(*byte)) & 0xff;
         for _ in 0..8 {
-            next = (next >> 1)
-                ^ if next & 1 == 1 { 0xedb8_8320 } else { 0 };
+            next = (next >> 1) ^ if next & 1 == 1 { 0xedb8_8320 } else { 0 };
         }
         checksum = (checksum >> 8) ^ next;
     }
@@ -90,10 +85,7 @@ fn crc32_ieee(bytes: &[u8]) -> u32 {
 
 /// Decode only four primary MBR entries. Extended/logical partitions are NOT
 /// followed; hybrid/protective entries are returned as plain entries.
-pub fn parse_mbr(
-    sector: &[u8],
-    disk_sectors: u64,
-) -> Result<Vec<MbrPartition>, TableError> {
+pub fn parse_mbr(sector: &[u8], disk_sectors: u64) -> Result<Vec<MbrPartition>, TableError> {
     sector_size(sector)?;
     if disk_sectors < 2 {
         return Err(TableError::InvalidGeometry);
@@ -241,7 +233,10 @@ pub fn parse_gpt_entries(
         return Err(TableError::ChecksumMismatch);
     }
     let mut result = Vec::new();
-    for (slot, raw) in array_data.chunks_exact(header.entry_size as usize).enumerate() {
+    for (slot, raw) in array_data
+        .chunks_exact(header.entry_size as usize)
+        .enumerate()
+    {
         if raw[0..16].iter().all(|byte| *byte == 0) {
             if raw.iter().any(|byte| *byte != 0) {
                 return Err(TableError::InvalidHeader);
@@ -332,9 +327,15 @@ mod tests {
     fn rejects_mbr_invalid_signature_and_out_of_bounds() {
         let mut sector = mbr();
         sector[510] = 0;
-        assert_eq!(parse_mbr(&sector, 20_000), Err(TableError::InvalidSignature));
+        assert_eq!(
+            parse_mbr(&sector, 20_000),
+            Err(TableError::InvalidSignature)
+        );
         assert_eq!(parse_mbr(&mbr(), 6000), Err(TableError::InvalidGeometry));
-        assert_eq!(parse_mbr(&mbr()[..128], 20_000), Err(TableError::InvalidSectorSize));
+        assert_eq!(
+            parse_mbr(&mbr()[..128], 20_000),
+            Err(TableError::InvalidSectorSize)
+        );
     }
 
     #[test]
