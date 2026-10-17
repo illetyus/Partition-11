@@ -1,0 +1,11 @@
+[package]
+name = "partition11-core"
+version = "0.1.0"
+description = "Partition 11 safety policies and future operation orchestration"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+path = "src/lib.rs"

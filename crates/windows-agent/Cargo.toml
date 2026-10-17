@@ -1,0 +1,15 @@
+[package]
+name = "partition11-agent"
+version = "0.1.0"
+description = "Unprivileged Phase 0 capability stub; no Windows disk I/O"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "partition11-agent"
+path = "src/main.rs"
+
+[dependencies]
+partition11-core = { path = "../core" }
