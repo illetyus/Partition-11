@@ -61,16 +61,19 @@ only after an explicit architecture decision and license review.
 ## Verified phase status (2026-10-18)
 
 - **P0**: TypeScript/Rust skeleton, MIT license, threat model, locked dependency
-  installs, CycloneDX Node SBOM, and Windows/Linux CI exist. Dependency and
-  release-hardening work remains. Dependabot PR #13 updated fast-xml-parser
-  from 5.2.5 to 5.7.0 on 2026-10-18; do not treat this as a complete
-  transitive-dependency audit.
+  installs, CycloneDX Node SBOM, and Windows/Linux CI exist. Dependabot PR #13
+  updated fast-xml-parser from 5.2.5 to 5.7.0; PR #16 default-denies Electron
+  browser permissions and synchronizes docs; PR #18 pins CI actions, Node 24.21.0
+  and Rust 1.99.1. All merged by 2026-10-18. Runtime/transitive dependency
+  audits, production provenance and hardware validation are still outstanding.
 - **P1**: Approved Windows 11-style mock UI and real-Electron CI screenshot
   tests are present. Packaged Windows 11 desktop testing, physical mixed-DPI,
   Narrator and high-contrast acceptance are NOT complete.
-- **P2**: A bounded, memory-only GPT/MBR parser exists. Real Win32 disk
-  discovery, stable device identity, disk image reader, ext superblock
-  inspection, and full physical-device acceptance are NOT implemented.
+- **P2**: A bounded, memory-only GPT/MBR parser and **internal**, ordinary-file,
+  bounded, read-only image reader (PR #17) exist. Neither is wired to the app
+  or agent. Real Win32 disk discovery, stable device identity, end-to-end
+  authenticated image access, ext superblock inspection, and physical-device
+  acceptance are NOT implemented.
 - **P2.5A / P2.5B.1**: Four mock-only benchmark profiles, a strict XML result
   parser, genuine pinned DiskSpd **read-only CI** smoke test, fixed workload
   planner, and exact-owned scratch-file tests exist. No user-facing benchmark
@@ -117,13 +120,24 @@ Every increment: separate PR, tests on Windows/Linux where relevant,
 explicit capability checks, docs/ADR updates, and no physical writes before P5.
 Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
 
+## Continue from the latest handoff
+
+**Session-independent checkpoint:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md).
+Read it before resuming in another ChatGPT/Codex session. It records the
+last verified `main` SHA and CI evidence, merged changes, safety boundaries,
+exact next P2-I2 issue, tests, and the **mandatory merge-to-main protocol**.
+The checkpoint is a dated snapshot: verify live GitHub state each new session.
+
 ## Work tracking
 
 - P0: [#1](https://github.com/illetyus/Partition-11/issues/1)
 - P1: [#2](https://github.com/illetyus/Partition-11/issues/2)
-- P2: [#3](https://github.com/illetyus/Partition-11/issues/3)
+- P2: [#3](https://github.com/illetyus/Partition-11/issues/3); current next task
+  [P2-I2 #19](https://github.com/illetyus/Partition-11/issues/19)
 - P2.5: [#9](https://github.com/illetyus/Partition-11/issues/9)
 - Completed relevant PRs: [#6](https://github.com/illetyus/Partition-11/pull/6)
   memory parser, [#14](https://github.com/illetyus/Partition-11/pull/14)
   official read-only DiskSpd CI, [#15](https://github.com/illetyus/Partition-11/pull/15)
   scratch lease and workload planner.
+
+- Latest completed P0/P2 changes: [#13](https://github.com/illetyus/Partition-11/pull/13) dependency, [#16](https://github.com/illetyus/Partition-11/pull/16) Electron security, [#17](https://github.com/illetyus/Partition-11/pull/17) internal read-only image reader, [#18](https://github.com/illetyus/Partition-11/pull/18) pinned CI. They are **merged**, not pending.

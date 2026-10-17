@@ -1,0 +1,210 @@
+# Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
+
+> **Yeni oturum için başlangıç belgesi.** Bu belge 18 Ekim 2026 tarihinde
+> GitHub'dan doğrulanmış bir **anlık durum kaydıdır**. Yeni oturum önce en
+> güncel `main` commit'ini, açık PR/Issue'ları ve GitHub Actions kontrollerini
+> yeniden sorgulamalıdır. Bu belgedeki SHA daha sonraki commit'lerle değişebilir.
+
+## 1. Proje kimliği ve ana hedef
+
+- **Repo:** https://github.com/illetyus/Partition-11
+- **Uygulama:** Partition 11, erken geliştirme sürümü `0.1.0`.
+- **Ana dal:** `main` (bütün kabul edilen işler sonunda buraya merge edilir).
+- **Son devirden önce doğrulanan `main`:** `2b4a7cd0ecfeb2b246c4f917a500c96e41f6bf3c`.
+  Bu devir belgesinin kendi merge commit'i yukarıdaki referanstan daha yeni olacaktır.
+- **Hedef:** Windows 11 üzerinde EXT2/EXT3/EXT4 disklerini önce güvenli
+  biçimde tanıyan ve dosya dışa aktaran, daha sonra doğrulanmış benchmark,
+  biçimlendirme ve gerekiyorsa onarım/boyutlandırma özellikleri kazanan
+  masaüstü uygulaması. Son kullanıcı için WSL/Linux kurma zorunluluğu **yok**.
+- **Ürün önceliği:** veri kaybını önleme > doğru kapasite/kimlik > gerçek
+  işlevsellik > arayüz > ileriki özellikler. Denenmemiş işlevi etkin gösterme.
+- **Açıklama dili:** Kullanıcıyla Türkçe ve mümkün olduğunca sade konuş;
+  gerekli teknik terimleri kısa biçimde açıkla.
+
+## 2. Kaydedilmiş mimari ve güvenlik kararları
+
+```text
+React + Fluent UI / Electron renderer (güvenilmeyen arayüz)
+   -> dar kapsamlı sürümlenmiş preload/IPC
+Electron main (kaynak doğrulama, izinleri reddetme)
+   -> gelecekteki kimliği doğrulanmış yerel IPC (henüz bağlı DEĞİL)
+Ayrı Rust partition11-agent (şimdi sadece capabilities komutu; yetki yükseltmez)
+   -> gelecekte salt okunur Win32 disk keşfi
+   -> gelecekteki güvenli disk imajı/EXT motoru
+```
+
+- Ana işlem, renderer'a ham disk tanıtıcısı veya yükseltilmiş izin vermez.
+- `src/main/main.ts` tüm web izni isteklerini varsayılan olarak reddeder;
+  `nodeIntegration: false`, `sandbox: true`, `contextIsolation: true`.
+- `crates/core/src/lib.rs` yıkıcı işlemleri reddeder. `Inspect` için
+  **politika izni**, çalışır durumda disk görüntüleyici demek değildir.
+- Uygulamanın `inspectImages`, `inspectPhysicalDisks`, `writeImages`
+  ve `writePhysicalDisks` yeteneklerinin tamamı hâlâ **false**.
+- `crates/core/src/image.rs` sadece **iç kullanım için** salt okunur, sıradan
+  dosya okuyucusudur. Tek okumada en fazla 4 MiB, 512/4096 sektör; boyut
+  değişikliklerini kontrol eder. **Agent'a/UI'ya bağlanmadı**; tam güvenilir
+  dosya kimliği, reparse ve aynı uzunlukta eşzamanlı değişiklik koruması henüz yok.
+- Linux `e2fsprogs` geliştirme/test sırasında bağımsız karşılaştırma kaynağı;
+  Windows son kullanıcı çalışma zamanı bağımlılığı değil.
+- Gerçek fiziksel diske **yazmak yasak**, P5 güvenlik/hardware kabul testine
+  kadar biçimlendirme, onarma, yeniden boyutlandırma açılmaz.
+- DiskSpd gerçek kullanıcı işlevi kapalı. CI'daki uygulamanın sahip olduğu
+  dosyada salt okunur test, gerçek cihaz performans ölçümü değildir.
+- Şimdilik mağazaya çıkabilecek imzalı yükleyici/yayın **yok**.
+
+Bkz. [ARCHITECTURE.md](ARCHITECTURE.md),
+[THREAT_MODEL.md](THREAT_MODEL.md), [PLAN.md](PLAN.md),
+[SECURITY.md](../SECURITY.md).
+
+## 3. Şu ana kadar yapılan ve `main` dalına birleştirilen işler
+
+| PR | Konu | Merge sonucu |
+|---|---|---|
+| [#6](https://github.com/illetyus/Partition-11/pull/6) | Rust bellekte GPT/MBR bölüm çözümleyicisi | Daha önce birleştirildi |
+| [#14](https://github.com/illetyus/Partition-11/pull/14) | Gerçek DiskSpd XML kullanan yalnızca CI, salt okunur entegrasyon | Daha önce birleştirildi |
+| [#15](https://github.com/illetyus/Partition-11/pull/15) | Sınırlı test iş yükü ve sahiplik kontrollü scratch dosyası | Daha önce birleştirildi |
+| [#13](https://github.com/illetyus/Partition-11/pull/13) | `fast-xml-parser` **5.2.5 → 5.7.0** | Birleştirildi, `cb79b73a` |
+| [#16](https://github.com/illetyus/Partition-11/pull/16) | Electron web izinlerini reddetme, regresyon kontrolleri, plan/ADR düzeltmeleri | Birleştirildi, `2ed43db4` |
+| [#17](https://github.com/illetyus/Partition-11/pull/17) | **P2-I1** sınırlı salt okunur Rust disk imajı dosya okuyucusu + testler | Birleştirildi, `c3543e0b` |
+| [#18](https://github.com/illetyus/Partition-11/pull/18) | **P0-H2** GitHub Actions sabit commit'leri, Node 24.21.0, Rust 1.99.1 | Birleştirildi, `2b4a7cd0` |
+
+Güncel kod yolları:
+- `src/main/main.ts`, `src/main/preload.ts`, `src/shared/protocol.ts` —
+  Electron ve güvenlikli IPC.
+- `src/main/desktop-security.test.ts` — P0 güvenlik regresyon kontrolleri.
+- `src/renderer/App.tsx`, `src/renderer/BenchmarkPanel.tsx` —
+  **örnek/simülasyon** disk arayüzü ve kapalı benchmark.
+- `crates/core/src/lib.rs`, `crates/core/src/partition.rs` — Rust politika
+  katmanı ve bellekte GPT/MBR çözümlemesi.
+- `crates/core/src/image.rs` — P2-I1 iç salt okunur imaj dosya okuyucusu.
+- `crates/windows-agent/src/main.rs` — henüz sadece
+  `capabilities` diagnostic komutu; Electron bağlantısı yok.
+- `src/main/benchmarkXml.ts`, `src/main/benchmarkPolicy.ts`,
+  `src/main/benchmarkScratch.ts` — XML doğrulama, sınırlandırılmış
+  workload ve test amaçlı dosya sahipliği yardımcıları.
+- `.github/workflows/ci.yml`, `windows-ui.yml`,
+  `windows-diskspd-xml.yml` — kontrol ve preview iş akışları.
+
+### Doğrulanmış test kanıtları
+
+**Devir kaydına esas `main` SHA `2b4a7cd0` üzerinde 3/3 başarılı:**
+
+1. [Temel CI](https://github.com/illetyus/Partition-11/actions/runs/39079777033):
+   Windows/Linux Rust kontrolleri, Electron/TypeScript derleme ve ana süreç testleri.
+2. [Windows Electron UI preview](https://github.com/illetyus/Partition-11/actions/runs/39079777104):
+   Gerçek Electron smoke/screenshot ve imzasız unpacked x64 preview.
+3. [DiskSpd read-only XML CI](https://github.com/illetyus/Partition-11/actions/runs/39079777043):
+   sabit sürümlü DiskSpd ile yalnızca CI scratch dosyasına okuma testi.
+
+**Önemli:** GitHub `windows-latest` runner gerçek tüketici Windows 11
+donanımı/mixed-DPI kabul testi değildir; unsigned preview yayın değildir.
+
+## 4. Fazların gerçek ilerleme durumu
+
+| Faz | Tamam olan | Açık kalan / bitmedi |
+|---|---|---|
+| P0 | CI, kilit dosyaları, MIT, temel güvenlik, #13 #16 #18 | Daha kapsamlı bağımlılık/ruhsat denetimi, imzalı üretim zinciri, gerçek Windows 11 kabul |
+| P1 | Windows 11 benzeri Fluent UI örnek arayüz, tema ve Actions görüntüleri | Fiziksel Windows 11 mixed-DPI, Narrator, klavye/erişilebilirlik ve paketlenmiş uygulama QA |
+| **P2** | Bellekte GPT/MBR; **P2-I1 iç imaj okuyucu** | **P2-I2 gerçek Win32 disk keşfi**, P2-I3..I6 kimlik, IPC, gerçek liste, diferansiyel testler |
+| P2.5 | Örnek benchmark paneli, sabit profiller, XML parser, CI okuma, scratch/workload yardımcıları | Gerçek volume yetkilendirmesi, sınırlı üretim worker, iptal, kullanıcı onayı, sonuçlar, fiziksel QA |
+| P3 | Planlandı | EXT2/3/4 dosya listeleme/dışa aktarma motoru yok |
+| P4 | Planlandı | Yalnızca disk imajına yazma ve fault-injection testleri yok |
+| P5 | Planlandı | Fiziksel diskte biçimlendirme güvenlikli agent'ı yok |
+| P6/P7/P8 | Koşullu, gelecekte | Onarma, filesystem+partition resize, opsiyonel WinFsp mount yok |
+| P9 | CI'da imzasız önizleme paketleme | İmzalı installer/release, dağıtım kanıtları ve donanım kabulü yok |
+
+**Ürün kilometre taşları:** M1 salt okunur gerçek disk görüntüleme + EXT
+dışa aktarma; M2 güvenli benchmark + yalnız doğrulanmış biçimlendirme;
+M3 motor desteklerse onarma/boyutlandırma/bağlama. Detay: [PLAN.md](PLAN.md).
+
+## 5. Tam olarak nerede kaldık ve sıradaki iş
+
+**Sıradaki uygulama: [GitHub Issue #19 — P2-I2 Native Windows read-only
+disk and volume discovery](https://github.com/illetyus/Partition-11/issues/19).**
+
+Aşağıdaki sırayı izle:
+
+1. Önce canlı `main`, Issue #19, mevcut kod ve CI'yi tekrar oku.
+   İsim veya işlev tahminiyle kod değiştirme.
+2. Windows'ta fiziksel disk, volume ve partition bilgilerini yalnızca
+   **salt okunur** alan Win32/Rust keşif katmanını küçük PR'lere ayır.
+   `DeviceIoControl`, `IOCTL_DISK_GET_DRIVE_LAYOUT_EX`,
+   `IOCTL_STORAGE_QUERY_PROPERTY`, uygun geometri sorguları incelenmeli.
+3. Disk numarası/sürücü harfi kalıcı kimlik değildir. Kapasite, sektör
+   boyutu, aygıt bilgisi ve bölüm kimliği üzerinden güvenli snapshot ve
+   hotplug/TOCTOU kontrolleri tasarla.
+4. System/boot, BitLocker, erişim reddi, medya çıkarılması, GPT/MBR,
+   512e/4Kn ve bozuk tablo örneklerinde **hata yönetimini** doğrula.
+5. Agent ve Electron IPC ayrımını bozmadan salt okunur veriyi daha sonra
+   bağla. Yetki bayraklarını gerçek uçtan uca doğrulama olmadan açma.
+6. P2-I2 bitince P2-I3 (GPT backup, extended MBR/golden fixtures),
+   P2-I4 (kimlik/hotplug), P2-I5 (agent IPC), P2-I6 (gerçek UI);
+   ardından P2.5B ve P3 yönünde ilerle.
+
+Açık takip bağlantıları:
+[P0 #1](https://github.com/illetyus/Partition-11/issues/1),
+[P1 #2](https://github.com/illetyus/Partition-11/issues/2),
+[P2 #3](https://github.com/illetyus/Partition-11/issues/3),
+[P2.5 #9](https://github.com/illetyus/Partition-11/issues/9),
+[**P2-I2 #19**](https://github.com/illetyus/Partition-11/issues/19).
+
+## 6. KESİN iş akışı — `main` merge unutulmayacak
+
+Bu kural kullanıcı tarafından özellikle istendi ve her sonraki oturum için
+geçerlidir:
+
+1. İşe başlamadan `main` HEAD SHA, açık PR/Issue ve gerekli testleri kontrol et.
+2. Her küçük iş için `main` tabanlı **ayrı dal** ve tek amaçlı PR oluştur.
+   Kod, testler ve gerekli belgeler birlikte güncellensin.
+3. CI: Windows+Linux Rust fmt/clippy/test, Electron/TypeScript, main tests,
+   Electron Windows preview ve ilgili güvenlik/DiskSpd işlerini doğrula.
+   Bir hata varsa logu incele, kodu düzelt ve tekrar çalıştır.
+4. **Bütün gerekli kontroller geçmeden merge yapma.** Başarılıysa PR'yi
+   `main` dalına birleştir (tercihen squash, beklenen HEAD SHA ile).
+5. Merge sonrası yeni `main` SHA'yı doğrula; **yeni `main` CI koşumları**
+   tamamlanıp başarılı olmadan o işi bütünüyle bitmiş sayma.
+6. GitHub Issue kabul kutularını, [PLAN.md](PLAN.md) ve **bu devir
+   belgesini** güncelle. Sıradaki alt fazı ve eksikleri not et.
+7. Kullanıcıya PR bağlantıları, merge commit'leri, CI kanıtı, kalan
+   riskler ve **tam sıradaki iş** ile kısa Türkçe rapor ver.
+
+**PR açılması = merge edildi demek değildir.** CI'nin sırada/çalışıyor
+olması da test başarılı demek değildir. Fiziksel Windows 11 testlerini
+GitHub Windows VM başarılarıyla karıştırma. Yetki yükseltme ve yıkıcı
+disk işlemlerini hiçbir zaman bu belgeden hareketle açma.
+
+## 7. Kaynaklar, lisans ve tasarım notları
+
+- [Microsoft Windows disk layout API](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-ioctl_disk_get_drive_layout_ex)
+- [Microsoft DiskSpd](https://github.com/microsoft/diskspd) v2.3:
+  yalnızca uygulama sahipliğindeki dosyalara izin verecek şekilde hedeflenmiş.
+- [rust-fs-ext4](https://github.com/antimatter-studios/rust-fs-ext4):
+  EXT motoru **aday**; henüz entegre veya üretimde yazma için onaylı değil.
+  Onarım sınırlı, yeniden boyutlandırma desteği yok (aday sürüm incelemesi).
+- [e2fsprogs](https://github.com/tytso/e2fsprogs):
+  Linux test/karşılaştırma kaynağı. GPL bileşenlerini lisans incelemesi
+  olmadan MIT dağıtımına ekleme.
+- [WinFsp](https://github.com/winfsp/winfsp): sadece ileri dönem isteğe bağlı
+  bağlama için lisans/uyumluluk araştırması gerekir.
+- Ayrıntılar: [P2_PARTITION_PARSER.md](P2_PARTITION_PARSER.md),
+  [P2_IMAGE_READER.md](P2_IMAGE_READER.md),
+  [P2_5_DISK_BENCHMARK.md](P2_5_DISK_BENCHMARK.md),
+  [P0_REPRODUCIBLE_BUILDS.md](P0_REPRODUCIBLE_BUILDS.md),
+  [LICENSES.md](LICENSES.md).
+
+## 8. Yeni sohbetten devam etmek için hazır talimat
+
+Aşağıdaki metni yeni ChatGPT/Codex oturumuna ver:
+
+> GitHub'da `illetyus/Partition-11` reposunu aç. İlk önce
+> `AGENTS.md`, `docs/SESSION_HANDOFF.md`, `docs/PLAN.md`, açık
+> Issue #19 ve son `main` CI kontrollerini oku. Devir belgesindeki tarihî
+> SHA'yı canlı GitHub durumu ile karşılaştır. Bugüne kadar birleşen PR'leri,
+> gerçek yapılmış işleri, güvenlik sınırlarını ve kalan işleri kavra.
+> Kaldığımız yer **P2-I2: salt okunur gerçek Windows disk keşfi**.
+> Buradan başlayıp bir sonraki küçük işi kodla, test et, PR aç ve bütün
+> gerekli kontroller başarılı olduğunda **mutlaka `main` dalına merge et**.
+> Merge sonrası yeni `main` CI başarılarını doğrula, Issue ve devir
+> belgesini güncelle. Gerçek diske yazma/format yetkisi açma.
+> Bana yapılanlar, merge ve test kanıtları, kalanlar ve sıradaki adım
+> hakkında sade Türkçe rapor ver.

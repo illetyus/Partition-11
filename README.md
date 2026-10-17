@@ -2,9 +2,11 @@
 
 Modern, Windows 11–oriented ext2/ext3/ext4 disk management desktop application.
 
-**Status:** Phase 0 foundations implemented; Phase 1 Windows 11 UI implementation complete in source, pending physical-device and mixed-DPI verification. **No disk reads, physical disk writes, or repair/format operations are implemented or enabled.**
+**Status (2026-10-18):** P0 foundation and CI hardening are implemented; P1 Windows 11 UI exists in source, pending physical-device and mixed-DPI verification. P2 includes a memory-only GPT/MBR parser and an **internal bounded read-only regular image-file reader**, neither exposed through the app/agent. **No production image/physical-disk inspection, benchmark execution, disk writes, formatting, repair, or resize is enabled.**
 
 Architecture: Electron + React + TypeScript + Fluent UI (desktop shell), isolated Rust core (operation policies and future filesystem adapters), Windows privileged agent (future; explicitly disabled). Linux/WSL is not a runtime prerequisite.
+
+**Continue work in a new ChatGPT/Codex session:** read [the current handoff and exact next step](docs/SESSION_HANDOFF.md) and [agent working rules](AGENTS.md) first. The handoff includes completed PRs, green CI evidence, remaining tasks, the next P2-I2 issue, and the mandatory tested-PR-to-`main` merge sequence.
 
 Read [the project plan](docs/PLAN.md), [architecture](docs/ARCHITECTURE.md), [security policy](SECURITY.md), and [third-party license inventory](docs/LICENSES.md) before implementing filesystem operations.
 

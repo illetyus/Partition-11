@@ -1,6 +1,6 @@
 # P2.5 — Disk Benchmark: literature review and implementation plan
 
-Reviewed: 2026-10-17. State: P2.5A benchmark UI and typed, inert IPC in development. No benchmark worker is implemented.
+Reviewed: 2026-10-18. State: P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives are implemented for tests. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
 
 ## Decision and scope
 
@@ -79,7 +79,7 @@ comparability, so version and test conditions must be recorded.
   profiles after compatibility testing; no baseline performance promises.
 - ARM64 runtime and packaging must have their own CI acceptance gate.
 
-## Initial workload presets (proposals, not implemented)
+## Initial workload presets (definitions implemented; live execution NOT enabled)
 
 | Label | Access pattern | I/O block | Queue/thread | Metrics |
 |---|---|---|---|---|
