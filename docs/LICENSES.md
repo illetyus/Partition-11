@@ -50,3 +50,5 @@ architecture, preserve its MIT notice and list it in the third-party
 inventory/SBOM. Do not dynamically download executables at application runtime.
 CrystalDiskMark source/assets are not copied. fio remains a separate,
 non-distributed test comparator pending any explicit legal review.
+
+| fast-xml-parser — https://github.com/NaturalIntelligence/fast-xml-parser | MIT | Bounded DiskSpd XML result parser (P2.5A.2); third-party notice review required |

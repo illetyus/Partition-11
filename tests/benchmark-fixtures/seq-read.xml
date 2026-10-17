@@ -1,0 +1,18 @@
+<Results>
+  <System><Tool><Version>2.3</Version></Tool></System>
+  <Profile><TimeSpans><TimeSpan><Targets><Target>
+    <BlockSize>1048576</BlockSize><RequestCount>8</RequestCount>
+    <WriteRatio>0</WriteRatio><Random>0</Random>
+  </Target></Targets></TimeSpan></TimeSpans></Profile>
+  <TimeSpan><TestTimeSeconds>15.00</TestTimeSeconds><ThreadCount>1</ThreadCount><RequestCount>8</RequestCount>
+    <Latency><AverageReadMilliseconds>0.400</AverageReadMilliseconds>
+      <Bucket><Percentile>95</Percentile><ReadMilliseconds>0.720</ReadMilliseconds></Bucket>
+      <Bucket><Percentile>99</Percentile><ReadMilliseconds>1.120</ReadMilliseconds></Bucket>
+    </Latency>
+    <Thread><Id>0</Id><Target>
+      <Path>P11Owned_A.bin</Path><BytesCount>1572864000</BytesCount><IOCount>1500</IOCount>
+      <ReadBytes>1572864000</ReadBytes><ReadCount>1500</ReadCount>
+      <WriteBytes>0</WriteBytes><WriteCount>0</WriteCount>
+    </Target></Thread>
+  </TimeSpan>
+</Results>
