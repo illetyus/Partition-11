@@ -33,3 +33,9 @@ snapshot and verify byte offsets, sector sizes, hot-plug identity,
 genuine 512e/4Kn images, GPT primary/backup consistency, malformed
 partition arrays and OS-level access-denied behavior. Cross-check
 sample images against Linux `sfdisk`/`sgdisk` and Windows disk APIs.
+
+## Internal image-reader primitive
+
+P2-I1 added a bounded, regular-file-only image reader in the Rust core; see
+[P2-I1 image reader](P2_IMAGE_READER.md). It is not connected to the
+Windows agent or GUI; no live disk/image capabilities are enabled.
