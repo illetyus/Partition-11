@@ -79,6 +79,14 @@ function bridge() {
       platform: process.platform === "win32" ? "windows" : "other"
     };
   });
+  ipcMain.handle("partition11:benchmark-availability", () => ({
+    protocolVersion: 1,
+    phase: "P2.5A",
+    mode: "preview",
+    engineAvailable: false,
+    canRead: false,
+    canWrite: false
+  }));
   ipcMain.handle("partition11:titlebar-theme", (_, theme) => {
     if (!["light", "dark"].includes(theme)) throw new Error("Invalid theme");
     windowRef.setTitleBarOverlay({
