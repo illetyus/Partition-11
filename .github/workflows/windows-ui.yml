@@ -14,10 +14,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: '24'
+          node-version: '24.21.0'
           cache: npm
       - name: Install exact locked dependencies and Electron runtime
         run: npm ci --no-audit --no-fund
@@ -52,7 +52,7 @@ jobs:
           Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/Partition-11-Windows-x64-preview.zip" -Force
       - name: Upload Electron Windows screenshot evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: partition11-windows-ui-screenshots
           path: ui-artifacts/
@@ -60,7 +60,7 @@ jobs:
           if-no-files-found: warn
       - name: Upload Windows unsigned UI preview
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: partition11-windows-x64-preview
           path: release/Partition-11-Windows-x64-preview.zip

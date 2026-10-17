@@ -6,10 +6,10 @@ and is not part of the permanent CI.
 
 ## Locked builds
 
-- Windows CI uses Node.js 24, `npm ci --no-audit --no-fund`.
+- Windows CI pins Node.js **24.21.0**, uses `npm ci --no-audit --no-fund` and runs the exact dependency lockfile.
 - Electron runtime binary download is skipped in CI when doing the TypeScript/
   renderer build only. This does not validate the packaged executable.
-- Rust CI on Windows and Linux uses `cargo clippy --locked` and
+- Rust CI pins Rust **1.99.1** on Windows and Linux, uses `cargo clippy --locked` and
   `cargo test --locked` and separately enforces `cargo fmt`.
 - Third-party metadata is archived as a CycloneDX dependency inventory.
 - Dependencies may still need vulnerability updates; lockfiles do not
@@ -36,3 +36,26 @@ cargo test --locked --workspace --all-targets
 ```
 
 The UI build is not a disk formatter and cannot open physical disks.
+
+## P0-H2 dependency-action provenance (2026-10-18)
+
+CI workflow `uses:` references are pinned to full SHA values instead of
+mutable version tags. Resolved from GitHub's tag reference API and
+previous successful workflow logs:
+
+| Action | Pinned commit | Provenance |
+| --- | --- | --- |
+| actions/checkout v5 | `fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09` | v5 tag ref |
+| actions/setup-node v5 | `a0853c24544627f65ddf259abe73b1d18a591444` | v5 tag ref |
+| actions/upload-artifact v5 | `330a01c490aca151604b8cf639adc76d48f6c5d4` | v5 tag ref |
+| dtolnay/rust-toolchain | `b725eda525362e7cf34af9a7243cac1e3f01a7ec` | successful CI runner ref |
+
+Toolchain versions are **Node.js 24.21.0** (observed on GitHub Windows
+runner) and **Rust 1.99.1** (observed on GitHub Linux runner); bump them
+through reviewed PRs rather than floating defaults.
+
+These pins control the CI toolchain, not the complete runner OS image,
+GitHub-hosted VM hardware, Electron's embedded Chromium dependency,
+Windows release runtime, or a signed installer. A fully verifiable final
+release still requires artifact attestation, binary signing, Rust/native
+SBOM coverage and independent Windows 11 device tests.
