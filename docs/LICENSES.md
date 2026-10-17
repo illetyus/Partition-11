@@ -27,3 +27,15 @@ not a statement that they are all included in distributed builds.
   copyright notices, bundled licenses, and all transitive packages.
 - Run dependency and SBOM tooling in release pipeline; CI in P0 only
   proves compilation and policy tests, not legal clearance.
+
+## Dependency lockfiles and audits
+
+- The checked-in `package-lock.json` records the resolved npm dependency graph,
+  but does not itself prove that every transitive package has an approved license.
+- `Cargo.lock` pins the Rust workspace graph; the current Rust agent only uses
+  the workspace safety-policy crate and does **not** link an ext4 engine.
+- Windows CI uses `npm ci` and Cargo `--locked` to reject dependency
+  resolution drift; CycloneDX SBOM output is archived per CI run.
+- Before a public binary release, inspect Electron/Chromium bundled third-party
+  notices, native redistributables, font/icon licenses, and dependency changes.
+  An automated SBOM is evidence for review, not a license grant or legal opinion.

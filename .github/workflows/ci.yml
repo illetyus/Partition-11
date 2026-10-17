@@ -24,9 +24,9 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Test
-        run: cargo test --workspace --all-targets
+        run: cargo test --locked --workspace --all-targets
 
   electron:
     name: Electron TypeScript and renderer build
@@ -36,12 +36,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      # P0 bootstrap: package-lock.json will be generated/pinned before release.
+          cache: 'npm'
       - name: Install dependencies (build-only, no Electron binary)
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Typecheck and bundle
         run: npm run build
       - name: IPC security policy tests
         run: npm run test:main
+      - name: Generate CycloneDX dependency inventory
+        shell: bash
+        run: npm sbom --sbom-format cyclonedx > dependency-sbom.json
+      - name: Upload dependency inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: partition11-node-dependencies
+          path: dependency-sbom.json
+          retention-days: 14
