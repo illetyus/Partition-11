@@ -1,8 +1,7 @@
 # Partition 11 implementation plan
 
-Last reviewed: 2026-10-17. The project name is **Partition 11**. Desired
-repository slug is **partition-11** (GitHub repo is currently named
-`Partition-11`; the linked connector cannot rename it).
+Last reviewed: 2026-10-17. Application name is **Partition 11** and the
+GitHub repository remains **illetyus/Partition-11** by user decision.
 
 ## Objective
 
@@ -51,13 +50,17 @@ only after an explicit architecture decision and license review.
 
 ## Phase status
 
-P0 in progress: repo initialized; all device and image operations disabled.
-No claim of a successful Windows installer or physical media validation.
+P0 foundation is implemented, baseline GitHub CI passed on Windows and Linux.
+Dependency locks are generated on the separate P0 branch for review.
+P1 preload/CSP/DPI-status source was merged with PR #4; hands-on Windows 11
+multi-monitor testing and packaged installer smoke testing remain unverified.
+All physical-device and image operations remain disabled.
 
 ## Next actions
 
-1. Land source scaffold and CI.
-2. Run GitHub Actions and fix dependency/build issues until green.
-3. Pin npm and Cargo lock files; inventory bundled transitive licenses.
-4. Write P1 UI acceptance matrix, including screen reader tests.
-5. Implement P2 **read-only** enumerator behind narrow versioned IPC.
+1. Merge P0 dependency lockfiles and convert CI to `npm ci` and Cargo `--locked`.
+2. Archive a dependency SBOM as a CI artifact and audit release licenses.
+3. Validate packaged Electron preload and Windows 11 mixed-DPI transitions.
+4. Complete the P1 Narrator and contrast acceptance checklist.
+5. Design and implement P2 image-only GPT/MBR parsers, followed by strictly
+   read-only Win32 discovery behind narrow versioned IPC.
