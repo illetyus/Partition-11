@@ -1,10 +1,12 @@
 //! Partition 11 core: safe-by-default policy layer.
 //!
-//! Phase 0 contains no disk I/O implementation. No writes can be authorized.
+//! Phase 0 exposes no storage I/O to the app. P2 provides an internal,
+//! bounded read-only regular image-file adapter. No writes can be authorized.
 //! Any future write support MUST be gated by a versioned capability and a
 //! separate privileged Windows agent with independent device validation.
 #![forbid(unsafe_code)]
 
+pub mod image;
 pub mod partition;
 
 /// A named image is a logical target; it is NOT opened by Phase 0.
