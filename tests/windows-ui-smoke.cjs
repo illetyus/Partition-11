@@ -143,6 +143,17 @@ async function main() {
   check(await js("document.documentElement.scrollWidth <= window.innerWidth + 1"), "Small-screen responsive layout has no horizontal overflow");
   check(await js("document.querySelector('[data-testid=\"format-button\"]').disabled"), "Format remains disabled at narrow size");
   await snap("05-narrow-layout");
+
+  // The hosted Windows display can be only 1024×768. Capture the lower
+  // warning and action area separately so the entire reference can be
+  // reviewed without needing a larger physical monitor.
+  windowRef.setSize(1024, 768);
+  await new Promise(resolve => setTimeout(resolve, 350));
+  await js("document.querySelector('.warning-box').scrollIntoView({block: 'start'})");
+  check(await js("document.querySelector('.warning-box')?.textContent.includes('tüm dosyaları siler')"), "Destructive-action warning is visible");
+  check(await js("document.querySelector('[data-testid=\\\"format-button\\\"]').disabled"), "Format is still disabled in the bottom action area");
+  await snap("06-warning-and-action");
+
   fs.writeFileSync(path.join(output, "ui-smoke-report.json"), JSON.stringify(report, null, 2));
   clearTimeout(watchdog);
   windowRef.close();
