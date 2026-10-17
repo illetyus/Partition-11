@@ -219,6 +219,11 @@ pub fn parse_gpt_entries(
     header: &GptHeader,
     array: &[u8],
 ) -> Result<Vec<GptPartition>, TableError> {
+    // Public structs may be synthesized by callers: fail closed even when
+    // the header did not originate from parse_gpt_header.
+    if header.entry_count == 0 || header.entry_size < 128 || header.entry_size % 8 != 0 {
+        return Err(TableError::InvalidHeader);
+    }
     let array_len = usize::try_from(
         u64::from(header.entry_count)
             .checked_mul(u64::from(header.entry_size))
@@ -345,6 +350,14 @@ mod tests {
         let header = parse_gpt_header(&sector, 100, 1).unwrap();
         assert_eq!(header.entry_count, 4);
         assert!(parse_gpt_entries(&header, &entries).unwrap().is_empty());
+        let forged = GptHeader {
+            entry_size: 0,
+            ..header
+        };
+        assert_eq!(
+            parse_gpt_entries(&forged, &entries),
+            Err(TableError::InvalidHeader)
+        );
 
         let mut invalid = sector;
         invalid[40] ^= 1;
