@@ -181,3 +181,21 @@ but it never presents scores for sample disk identities and no live
 benchmark report is connected to the current UI. The worker, owned scratch
 file, identity validation, process cancellation, and hardware tests remain
 separate next-phase work.
+
+## P2.5A.3 — Native DiskSpd XML smoke in GitHub Actions
+
+A separate Windows Actions workflow downloads the **official Microsoft
+DiskSpd 2.3** ZIP and checks the SHA-256 digest reported by GitHub Releases
+before extracting or running the binary:
+
+`18609981e8b04b4f645f1fd182ad0541615fe71722de36a9a933c54f747218a3`
+
+The test creates exactly one new small scratch file in GitHub's ephemeral
+`RUNNER_TEMP`, runs fixed **100%-read** options (`-w0 -Rxml -L`) against
+that file only, parses genuine DiskSpd XML and deletes the same scratch file.
+It never requests elevation or touches a raw physical disk. The test must not
+report CI runner speed as representative benchmark scores.
+
+This is validation code, **not a production storage worker**. The app still
+cannot benchmark actual volumes, and no downloadable DiskSpd binary is
+distributed to Partition 11 users.

@@ -1,0 +1,64 @@
+name: P2.5 DiskSpd XML integration (read-only CI)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  xml-integration:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci --no-audit --no-fund
+      - name: Compile strictly bounded XML parser
+        run: npm run build:main
+      - name: Verify official pinned DiskSpd and exercise read-only scratch-file
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = Join-Path $env:RUNNER_TEMP "diskspd-v2.3.zip"
+          $folder = Join-Path $env:RUNNER_TEMP "p11-diskspd-v2.3"
+          $scratch = Join-Path $env:RUNNER_TEMP ("p11-owned-" + [guid]::NewGuid().ToString("N") + ".bin")
+          $xml = Join-Path $env:RUNNER_TEMP "diskspd-result.xml"
+          try {
+            Invoke-WebRequest -Uri "https://github.com/microsoft/diskspd/releases/download/v2.3/DiskSpd.ZIP" -OutFile $zip
+            $sha = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($sha -ne "18609981e8b04b4f645f1fd182ad0541615fe71722de36a9a933c54f747218a3") {
+              throw "Official DiskSpd v2.3 release ZIP integrity mismatch"
+            }
+            Expand-Archive -Path $zip -DestinationPath $folder -Force
+            $bins = @(Get-ChildItem -Path $folder -Filter "diskspd.exe" -Recurse -File |
+              Where-Object { $_.FullName -match '[\\/]amd64[\\/]' })
+            if ($bins.Count -ne 1) { throw "Expected exactly one amd64 DiskSpd executable" }
+            # A brand-new test file in the ephemeral GitHub Actions runner.
+            # This is test setup, NOT a benchmark write workload.
+            $h = [System.IO.File]::Open($scratch, [System.IO.FileMode]::CreateNew,
+              [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            try { $h.SetLength(67108864); $h.Flush($true) } finally { $h.Dispose() }
+            # Fixed, read-only options: no -c file creation, no write ratio > 0,
+            # no raw disk path and no UAC. Do not interpret virtual runner speed.
+            & $bins[0].FullName '-b1M' '-o1' '-t1' '-w0' '-W0' '-d2' '-L' '-Rxml' $scratch |
+              Out-File -FilePath $xml -Encoding utf8
+            if ($LASTEXITCODE -ne 0) { throw "DiskSpd returned exit code $LASTEXITCODE" }
+            node tests/check-real-diskspd-xml.cjs $xml $scratch
+            if ($LASTEXITCODE -ne 0) { throw "DiskSpd XML decoder refused real output" }
+          } finally {
+            if (Test-Path -LiteralPath $scratch -PathType Leaf) {
+              Remove-Item -LiteralPath $scratch -Force
+            }
+            if (Test-Path -LiteralPath $xml -PathType Leaf) {
+              Remove-Item -LiteralPath $xml -Force
+            }
+          }

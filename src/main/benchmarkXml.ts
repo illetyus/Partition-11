@@ -146,8 +146,11 @@ export function parseDiskSpdXml(xml: string, trusted: TrustedDiskSpdRun): Parsed
   if (span.Error !== undefined) throw new Error("DiskSpd test reported an error");
   const durationSeconds = numeric(span.TestTimeSeconds, "TestTimeSeconds", true, false);
   if (durationSeconds > MAX_DURATION_SECONDS) throw new Error("Unexpected benchmark duration");
+  // Results.TimeSpan.RequestCount is the timespan-wide shared-thread
+  // setting (often 0 for per-target -o), NOT the target queue depth.
+  // The authorized Q depth is checked from Profile.Target.RequestCount.
   if (numeric(span.ThreadCount, "ThreadCount", true, true) !== 1 ||
-      numeric(span.RequestCount, "RequestCount", true, true) !== profile.queueDepth) {
+      numeric(span.RequestCount, "TimeSpan.RequestCount", false, true) > profile.queueDepth) {
     throw new Error("Unexpected DiskSpd concurrency");
   }
   const thread = record(only(span.Thread, "TimeSpan.Thread"), "TimeSpan.Thread");
