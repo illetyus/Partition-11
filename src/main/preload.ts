@@ -13,7 +13,7 @@ const CHANNELS = Object.freeze({
 const api: Partition11Bridge = Object.freeze({
   getStatus: () => ipcRenderer.invoke(CHANNELS.status),
   getDisplayInfo: () => ipcRenderer.invoke(CHANNELS.displayInfo),
-  onDisplayChanged(listener) {
+  onDisplayChanged(listener: () => void) {
     const handler = () => listener();
     ipcRenderer.on(CHANNELS.displayChanged, handler);
     return () => ipcRenderer.removeListener(CHANNELS.displayChanged, handler);
