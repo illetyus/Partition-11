@@ -1,6 +1,7 @@
 # ADR-0003: Microsoft DiskSpd file-targeted benchmarking
 
-Status: ACCEPTED for planning, implementation NOT STARTED (2026-10-17).
+Status: ACCEPTED; P2.5A and P2.5B.1 primitives implemented (2026-10-18).
+Production execution, Windows volume authorization and user-facing benchmarks are NOT enabled.
 
 ## Context
 

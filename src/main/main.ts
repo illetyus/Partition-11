@@ -1,6 +1,6 @@
 import path from "node:path";
 import {
-  app, BrowserWindow, ipcMain, nativeTheme, screen,
+  app, BrowserWindow, ipcMain, nativeTheme, screen, session,
   type IpcMainInvokeEvent
 } from "electron";
 import { IPC, type AppStatus, type DisplayInfo } from "../shared/protocol";
@@ -88,6 +88,8 @@ function createWindow(): void {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
       webSecurity: true
     }
   });
@@ -117,6 +119,21 @@ function createWindow(): void {
 app.setAppUserModelId("io.github.illetyus.partition11");
 
 app.whenReady().then(() => {
+  // No website, renderer, or child window needs access to camera, microphone,
+  // geolocation, notifications, external devices, or other web permissions.
+  // Deny at both request and synchronous permission-check boundaries.
+  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => {
+    callback(false);
+  });
+  session.defaultSession.setPermissionCheckHandler(() => false);
+
+  // Apply denial to any future webContents, not only the primary BrowserWindow.
+  app.on("web-contents-created", (_event, contents) => {
+    contents.setWindowOpenHandler(() => ({ action: "deny" }));
+    contents.on("will-navigate", event => event.preventDefault());
+    contents.on("will-attach-webview", event => event.preventDefault());
+  });
+
   ipcMain.handle(IPC.STATUS, event => {
     if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
     return currentStatus();
