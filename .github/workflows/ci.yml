@@ -37,7 +37,11 @@ jobs:
         with:
           node-version: '24'
       # P0 bootstrap: package-lock.json will be generated/pinned before release.
-      - name: Install dependencies
+      - name: Install dependencies (build-only, no Electron binary)
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: npm install --no-audit --no-fund
       - name: Typecheck and bundle
         run: npm run build
+      - name: IPC security policy tests
+        run: npm run test:main
