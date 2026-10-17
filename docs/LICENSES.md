@@ -14,6 +14,9 @@ not a statement that they are all included in distributed builds.
 | lwext4 — https://github.com/gkostka/lwext4 | BSD-3-Clause plus GPLv2 source files; complete build GPLv2 | Reference only, not vendored |
 | WinFsp — https://github.com/winfsp/winfsp | GPLv3 with FLOSS exception / commercial option | Deferred; exception conditions apply |
 | libfsext — https://github.com/libyal/libfsext | LGPL-3.0-or-later | Optional read-only candidate |
+| Microsoft DiskSpd — https://github.com/microsoft/diskspd | MIT | P2.5 candidate; not yet bundled. Pin v2.3 release, SHA-256 and notices |
+| CrystalDiskMark — https://github.com/hiyohiyo/CrystalDiskMark | MIT headers verified in DiskBench.cpp; whole-asset review pending | UX/profile reference only, not bundled |
+| fio — https://github.com/axboe/fio | GPL-2.0 COPYING verified | Development reference only, not bundled |
 
 ## Gate
 
@@ -39,3 +42,11 @@ not a statement that they are all included in distributed builds.
 - Before a public binary release, inspect Electron/Chromium bundled third-party
   notices, native redistributables, font/icon licenses, and dependency changes.
   An automated SBOM is evidence for review, not a license grant or legal opinion.
+
+## Benchmark license/release checks
+
+Before redistributing DiskSpd, verify the exact release asset hash and
+architecture, preserve its MIT notice and list it in the third-party
+inventory/SBOM. Do not dynamically download executables at application runtime.
+CrystalDiskMark source/assets are not copied. fio remains a separate,
+non-distributed test comparator pending any explicit legal review.
