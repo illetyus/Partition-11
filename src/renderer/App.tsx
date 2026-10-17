@@ -55,6 +55,7 @@ function DiskItem({
   return (
     <button
       type="button"
+      data-testid={"disk-" + disk.id}
       className={["disk-item", selected ? "selected" : "", disk.protected ? "protected" : ""].join(" ")}
       aria-current={selected ? "true" : undefined}
       disabled={disk.protected}
@@ -85,7 +86,7 @@ function DiskSummary({ disk }: { disk: SampleDisk }) {
         <strong className="summary-capacity">{disk.capacityLabel}</strong>
       </div>
       {usage ? (
-        <div className="partition-block">
+        <div className="partition-block" data-testid="partition-summary">
           <div className="partition-head">
             <strong>{usage.name} · Bölüm 1</strong>
             <span>{usage.filesystem}</span>
@@ -114,8 +115,17 @@ export function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [display, setDisplay] = useState<DisplayInfo | null>(null);
   const [bridgeUnavailable, setBridgeUnavailable] = useState(false);
+  const [appearanceError, setAppearanceError] = useState(false);
   const selected = sampleDisks.find(disk => disk.id === selectedId) ?? sampleDisks[0];
   const labelResult = validateExtLabel(label);
+
+  // Align the native Windows caption buttons with the manually chosen theme.
+  useEffect(() => {
+    if (!window.partition11?.setTitlebarTheme) return;
+    window.partition11.setTitlebarTheme(dark ? "dark" : "light")
+      .then(() => setAppearanceError(false))
+      .catch(() => setAppearanceError(true));
+  }, [dark]);
 
   useEffect(() => {
     let live = true;
@@ -146,16 +156,16 @@ export function App() {
   }
 
   return (
-    <FluentProvider theme={dark ? webDarkTheme : webLightTheme} className="partition-theme">
+    <FluentProvider theme={dark ? webDarkTheme : webLightTheme} className="partition-theme" data-theme={dark ? "dark" : "light"} style={{ colorScheme: dark ? "dark" : "light" }}>
       <div className="app-frame">
         <header className="topbar">
           <div className="topbar-brand">
             <span className="app-logo"><Icon name="drive" size={23}/></span>
             <span className="app-title">Partition 11</span>
-            <span className="preview-pill">Önizleme</span>
+            <span className="preview-pill" title="Arayüz demonstrasyonu, gerçek disk erişimi yok">Önizleme</span>
           </div>
           <div className="topbar-actions">
-            <button type="button" className="theme-toggle" onClick={toggleTheme} title={dark ? "Açık temaya geç" : "Koyu temaya geç"} aria-label={dark ? "Açık temaya geç" : "Koyu temaya geç"}>
+            <button type="button" className="theme-toggle" onClick={toggleTheme} title={dark ? "Açık temaya geç" : "Koyu temaya geç"} aria-label={dark ? "Açık temaya geç" : "Koyu temaya geç"} aria-pressed={dark}>
               <Icon name={dark ? "sun" : "moon"} size={20}/>
             </button>
             <span className="window-control-spacer" aria-hidden="true" />
@@ -166,7 +176,7 @@ export function App() {
           <aside className="sidebar" aria-labelledby="disk-list-heading">
             <div className="sidebar-title-row">
               <h2 id="disk-list-heading">Diskler</h2>
-              <span className="sample-pill">Örnek veriler</span>
+              <span className="sample-pill" role="status">Örnek veriler</span>
             </div>
             <nav className="disk-list" aria-label="Örnek diskler">
               {sampleDisks.map(disk => (
@@ -178,7 +188,7 @@ export function App() {
           </aside>
 
           <main className="workspace">
-            <div className="workspace-inner">
+            <div className="workspace-inner" data-testid="format-workspace">
               <div className="page-heading">
                 <h1>Biçimlendir</h1>
                 <p>Diski Linux için hazırla.</p>
@@ -190,7 +200,7 @@ export function App() {
                 <div className="fields-grid">
                   <div className="field">
                     <label htmlFor="volume-label">Bölüm etiketi</label>
-                    <input id="volume-label" type="text" value={label} maxLength={32}
+                    <input id="volume-label" type="text" value={label} maxLength={32} autoComplete="off" spellCheck={false}
                       onChange={event => setLabel(event.target.value)}
                       aria-invalid={!labelResult.valid}
                       aria-describedby="volume-label-hint"/>
@@ -199,8 +209,8 @@ export function App() {
                     </small>
                   </div>
                   <div className="field">
-                    <label htmlFor="filesystem">Dosya sistemi</label>
-                    <div className="locked-field">
+                    <label id="filesystem-title">Dosya sistemi</label>
+                    <div className="locked-field" role="textbox" aria-readonly="true" aria-labelledby="filesystem-title" tabIndex={-1}>
                       <span id="filesystem">EXT4</span>
                       <span className="small-tag">Linux</span>
                     </div>
@@ -208,7 +218,7 @@ export function App() {
                   </div>
                 </div>
 
-                <button type="button" className="advanced-toggle" aria-expanded={advanced}
+                <button type="button" data-testid="advanced-settings-toggle" className="advanced-toggle" aria-expanded={advanced}
                   aria-controls="advanced-settings" onClick={() => setAdvanced(value => !value)}>
                   <span><Icon name="sliders" size={20}/> Gelişmiş ayarlar</span>
                   <span className={advanced ? "chevron rotated" : "chevron"}><Icon name="chevron" size={17}/></span>
@@ -246,12 +256,12 @@ export function App() {
 
               <div className="action-row">
                 <div className="privilege-note"><Icon name="shield" size={21}/> İşlem için yönetici izni gerekir</div>
-                <button className="format-button" type="button" disabled
+                <button className="format-button" data-testid="format-button" type="button" disabled
                   title="Önizleme modunda biçimlendirme kullanılamaz">
                   <Icon name="drive" size={20}/> Biçimlendir
                 </button>
               </div>
-              <p className="demo-explanation">Önizleme modu: Bu ekrandaki disk bilgileri örnektir. Biçimlendir düğmesi güvenlik nedeniyle kapalıdır.</p>
+              <p className="demo-explanation">Önizleme modu: Disk bilgileri örnektir; gerçek disklere erişilmez ve biçimlendirme kapalıdır.</p>
             </div>
           </main>
         </div>
@@ -260,7 +270,7 @@ export function App() {
           <div className="status-left"><span className={status && !bridgeUnavailable ? "status-dot connected" : "status-dot"}/>
             <span>{bridgeUnavailable ? "Tarayıcı önizlemesi" : status ? "Hazır" : "Arayüz yükleniyor"} · {sampleDisks.filter(disk => !disk.protected).length} örnek kullanılabilir disk</span>
           </div>
-          <div className="status-right">{display ? "Ekran ölçeği: %" + Math.round(display.scaleFactor * 100) + " · " : ""}Arayüz önizlemesi · Gerçek disklere erişilmez</div>
+          <div className="status-right">{appearanceError ? "Pencere başlığı teması eşitlenemedi · " : ""}{display ? "Ekran ölçeği: %" + Math.round(display.scaleFactor * 100) + " · " : ""}Arayüz önizlemesi · Gerçek disklere erişilmez</div>
         </footer>
       </div>
     </FluentProvider>

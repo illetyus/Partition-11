@@ -124,20 +124,22 @@ app.whenReady().then(() => {
     if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
     return currentDisplayInfo();
   });
-
-  screen.on("display-metrics-changed", announceDisplayChange);
-  screen.on("display-added", announceDisplayChange);
-  screen.on("display-removed", announceDisplayChange);
-  nativeTheme.on("updated", () => {
-    announceDisplayChange();
+  ipcMain.handle(IPC.TITLEBAR_THEME, (event, theme: unknown) => {
+    if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
+    if (theme !== "dark" && theme !== "light") throw new Error("Invalid theme");
     if (process.platform === "win32" && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setTitleBarOverlay({
-        color: nativeTheme.shouldUseDarkColors ? "#1b2028" : "#eef2f7",
-        symbolColor: nativeTheme.shouldUseDarkColors ? "#f0f3fa" : "#202938",
+        color: theme === "dark" ? "#1b2028" : "#eef2f7",
+        symbolColor: theme === "dark" ? "#f0f3fa" : "#202938",
         height: 80
       });
     }
   });
+
+  screen.on("display-metrics-changed", announceDisplayChange);
+  screen.on("display-added", announceDisplayChange);
+  screen.on("display-removed", announceDisplayChange);
+  nativeTheme.on("updated", announceDisplayChange);
 
   createWindow();
   app.on("activate", () => {

@@ -1,0 +1,68 @@
+name: Windows Electron UI preview
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-ui:
+    name: Windows 11 Electron UI, screenshots and unpacked app
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install exact locked dependencies and Electron runtime
+        run: npm ci --no-audit --no-fund
+      - name: Ensure Electron Windows binary is installed
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "node_modules/electron/dist/electron.exe")) {
+            node node_modules/electron/install.js
+          }
+          if (-not (Test-Path "node_modules/electron/dist/electron.exe")) {
+            throw "Electron Windows runtime missing"
+          }
+      - name: Build checked TypeScript main, preload and React renderer
+        run: npm run build
+      - name: Enforce UI and storage capability safety tests
+        run: npm run test:main
+      - name: Run real Electron UI smoke and capture screenshots
+        shell: pwsh
+        env:
+          ELECTRON_ENABLE_LOGGING: '1'
+        run: |
+          & ".\node_modules\.bin\electron.cmd" ".\tests\windows-ui-smoke.cjs"
+          if ($LASTEXITCODE -ne 0) { throw "Electron UI smoke failed" }
+      - name: Package unsigned, unpacked Windows x64 desktop preview
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          & ".\node_modules\.bin\electron-builder.cmd" --win dir --x64 --publish never
+          if ($LASTEXITCODE -ne 0) { throw "Windows packaging failed" }
+          if (-not (Test-Path "release/win-unpacked/Partition 11.exe")) { throw "Packaged executable missing" }
+          Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/Partition-11-Windows-x64-preview.zip" -Force
+      - name: Upload Electron Windows screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partition11-windows-ui-screenshots
+          path: ui-artifacts/
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Upload Windows unsigned UI preview
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partition11-windows-x64-preview
+          path: release/Partition-11-Windows-x64-preview.zip
+          retention-days: 14
+          if-no-files-found: error
