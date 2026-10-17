@@ -65,10 +65,20 @@ function announceDisplayChange(): void {
 function createWindow(): void {
   const win = new BrowserWindow({
     title: "Partition 11",
-    width: 1220,
-    height: 790,
+    width: 1460,
+    height: 980,
     minWidth: 780,
-    minHeight: 570,
+    minHeight: 610,
+    // Retain native Windows caption buttons while allowing the custom
+    // draggable application header to match the reference layout.
+    titleBarStyle: process.platform === "win32" ? "hidden" : "default",
+    titleBarOverlay: process.platform === "win32"
+      ? {
+          color: nativeTheme.shouldUseDarkColors ? "#1b2028" : "#eef2f7",
+          symbolColor: nativeTheme.shouldUseDarkColors ? "#f0f3fa" : "#202938",
+          height: 80
+        }
+      : undefined,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#101217" : "#f7f8fa",
     show: false,
     autoHideMenuBar: true,
@@ -118,7 +128,16 @@ app.whenReady().then(() => {
   screen.on("display-metrics-changed", announceDisplayChange);
   screen.on("display-added", announceDisplayChange);
   screen.on("display-removed", announceDisplayChange);
-  nativeTheme.on("updated", announceDisplayChange);
+  nativeTheme.on("updated", () => {
+    announceDisplayChange();
+    if (process.platform === "win32" && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitleBarOverlay({
+        color: nativeTheme.shouldUseDarkColors ? "#1b2028" : "#eef2f7",
+        symbolColor: nativeTheme.shouldUseDarkColors ? "#f0f3fa" : "#202938",
+        height: 80
+      });
+    }
+  });
 
   createWindow();
   app.on("activate", () => {
