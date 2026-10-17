@@ -30,8 +30,6 @@ jobs:
           $ErrorActionPreference = "Stop"
           $zip = Join-Path $env:RUNNER_TEMP "diskspd-v2.3.zip"
           $folder = Join-Path $env:RUNNER_TEMP "p11-diskspd-v2.3"
-          $scratch = Join-Path $env:RUNNER_TEMP ("p11-owned-" + [guid]::NewGuid().ToString("N") + ".bin")
-          $xml = Join-Path $env:RUNNER_TEMP "diskspd-result.xml"
           try {
             Invoke-WebRequest -Uri "https://github.com/microsoft/diskspd/releases/download/v2.3/DiskSpd.ZIP" -OutFile $zip
             $sha = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -42,23 +40,12 @@ jobs:
             $bins = @(Get-ChildItem -Path $folder -Filter "diskspd.exe" -Recurse -File |
               Where-Object { $_.FullName -match '[\\/]amd64[\\/]' })
             if ($bins.Count -ne 1) { throw "Expected exactly one amd64 DiskSpd executable" }
-            # A brand-new test file in the ephemeral GitHub Actions runner.
-            # This is test setup, NOT a benchmark write workload.
-            $h = [System.IO.File]::Open($scratch, [System.IO.FileMode]::CreateNew,
-              [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-            try { $h.SetLength(67108864); $h.Flush($true) } finally { $h.Dispose() }
-            # Fixed, read-only options: no -c file creation, no write ratio > 0,
-            # no raw disk path and no UAC. Do not interpret virtual runner speed.
-            & $bins[0].FullName '-b1M' '-o1' '-t1' '-w0' '-W0' '-d2' '-L' '-Rxml' $scratch |
-              Out-File -FilePath $xml -Encoding utf8
-            if ($LASTEXITCODE -ne 0) { throw "DiskSpd returned exit code $LASTEXITCODE" }
-            node tests/check-real-diskspd-xml.cjs $xml $scratch
-            if ($LASTEXITCODE -ne 0) { throw "DiskSpd XML decoder refused real output" }
+            # CI runner internally constructs its own exclusive scratch lease
+            # and fixed read-only DiskSpd arguments; no renderer input is used.
+            node tests/run-safe-diskspd-ci.cjs $bins[0].FullName
+            if ($LASTEXITCODE -ne 0) { throw "Owned-file DiskSpd CI test failed" }
           } finally {
-            if (Test-Path -LiteralPath $scratch -PathType Leaf) {
-              Remove-Item -LiteralPath $scratch -Force
-            }
-            if (Test-Path -LiteralPath $xml -PathType Leaf) {
-              Remove-Item -LiteralPath $xml -Force
-            }
+            # The Node runner deletes only its verified owned file/directory.
+            # No recursive cleanup or user-path deletion is permitted here.
+            if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
           }

@@ -63,7 +63,7 @@ export function buildDiskSpdFileArgs(
   trustedFilePath: string, workload: BenchmarkWorkload
 ): PlannedDiskSpdWorkload {
   const plan = validateWorkload(workload);
-  if (typeof trustedFilePath !== "string" || !path.win32.isAbsolute(trustedFilePath) ||
+  if (typeof trustedFilePath !== "string" || !/^[A-Za-z]:[\\/]/.test(trustedFilePath) || !path.win32.isAbsolute(trustedFilePath) ||
       trustedFilePath.includes("\0") || trustedFilePath.includes("\n") ||
       trustedFilePath.includes("\r") ||
       /^\\\\[?.\\]/.test(trustedFilePath) || trustedFilePath.startsWith("\\\\") ||

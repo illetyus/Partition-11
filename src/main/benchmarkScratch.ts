@@ -88,15 +88,9 @@ export class OwnedScratchLease {
       await lease.verify();
       return lease;
     } catch (e) {
-      // Only clean the exclusively created file and directory, never a glob.
-      // On an unexpected identity issue the helper leaves evidence intact.
-      if (filePath) {
-        try {
-          const stat = await lstat(filePath);
-          if (stat.isFile() && !stat.isSymbolicLink()) await unlink(filePath);
-        } catch { /* The file might never have been created. */ }
-      }
-      try { await rmdir(directory); } catch { /* Fail closed on unexpected entries. */ }
+      // Fail closed. An error may indicate a replaced directory/file;
+      // deleting it here could destroy an unrelated user's data.
+      // The disposable CI runner retains evidence for incident review.
       throw e;
     }
   }
