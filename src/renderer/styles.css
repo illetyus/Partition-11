@@ -111,3 +111,24 @@ button:focus-visible { outline: 2px solid var(--colorStrokeFocus2); outline-offs
   .brand-mark, .disk-graphic-track div { forced-color-adjust: auto; border: 1px solid CanvasText; }
   .nav-item.active { border: 1px solid Highlight; }
 }
+
+/* P1: native scaling stays with Windows/Chromium. This controls layout only. */
+.appearance-label { display: block; margin-bottom: 8px; }
+.sidebar-bottom select { width: 100%; min-width: 0; }
+.display-info {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--colorNeutralForeground3);
+  font-variant-numeric: tabular-nums;
+}
+.status-point { background: var(--colorNeutralForeground4); }
+.status-point.ready { background: var(--colorPaletteGreenForeground1); }
+@media (max-width: 820px) {
+  .sidebar { gap: 12px; }
+  .sidebar-bottom { display: block; border: 0; margin: 0; padding: 0 0 5px; }
+  .sidebar-bottom .side-meta:not(.appearance-label), .sidebar-version { display: none; }
+  .sidebar-bottom select { max-width: 220px; }
+}
+@media (max-width: 600px) {
+  .display-info { width: 100%; margin-left: 0; }
+}

@@ -4,12 +4,16 @@ import {
   Button,
   Card,
   FluentProvider,
+  Select,
   Spinner,
   Text,
   webDarkTheme,
   webLightTheme
 } from "@fluentui/react-components";
-import type { AppStatus } from "../shared/protocol";
+import type { AppStatus, DisplayInfo } from "../shared/protocol";
+
+type ThemePreference = "system" | "light" | "dark";
+const PREFERENCE_KEY = "partition11.theme";
 
 const phaseCards = [
   {
@@ -32,6 +36,15 @@ const phaseCards = [
   }
 ];
 
+function readThemePreference(): ThemePreference {
+  try {
+    const value = localStorage.getItem(PREFERENCE_KEY);
+    return value === "dark" || value === "light" ? value : "system";
+  } catch {
+    return "system";
+  }
+}
+
 function useSystemDark(): boolean {
   const [dark, setDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
 
@@ -47,26 +60,53 @@ function useSystemDark(): boolean {
 
 export function App() {
   const systemDark = useSystemDark();
+  const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
   const [status, setStatus] = useState<AppStatus | null>(null);
+  const [display, setDisplay] = useState<DisplayInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const dark = themePreference === "dark" || (themePreference === "system" && systemDark);
 
   useEffect(() => {
     let alive = true;
-    window.partition11
-      .getStatus()
+    if (!window.partition11) {
+      setError("Yerel Electron köprüsü bulunamadı. Güvenlik nedeniyle hiçbir disk işlemi sunulmuyor.");
+      return;
+    }
+
+    window.partition11.getStatus()
       .then(value => {
         if (alive) setStatus(value);
       })
       .catch(() => {
         if (alive) setError("Uygulama durumuna erişilemiyor. Güvenlik nedeniyle disk işlemleri kullanılamaz.");
       });
+
+    const refreshDisplay = () => {
+      window.partition11.getDisplayInfo()
+        .then(info => { if (alive) setDisplay(info); })
+        .catch(() => { if (alive) setDisplay(null); });
+    };
+
+    refreshDisplay();
+    const unsubscribe = window.partition11.onDisplayChanged(refreshDisplay);
     return () => {
       alive = false;
+      unsubscribe();
     };
   }, []);
 
+  function setAppearance(next: ThemePreference): void {
+    setThemePreference(next);
+    try {
+      localStorage.setItem(PREFERENCE_KEY, next);
+    } catch {
+      // Storage may be disabled; the in-memory preference still works.
+    }
+  }
+
   return (
-    <FluentProvider theme={systemDark ? webDarkTheme : webLightTheme} className="theme-root">
+    <FluentProvider theme={dark ? webDarkTheme : webLightTheme} className="theme-root">
       <div className="shell">
         <aside className="sidebar" aria-label="Uygulama gezinme bölümü">
           <div className="brand">
@@ -85,8 +125,15 @@ export function App() {
           </nav>
 
           <div className="sidebar-bottom">
+            <label className="side-meta appearance-label" htmlFor="appearance">Görünüm tercihi</label>
+            <Select id="appearance" size="small" value={themePreference}
+              aria-label="Görünüm tercihi" onChange={event => setAppearance(event.target.value as ThemePreference)}>
+              <option value="system">Sistem ayarını kullan</option>
+              <option value="light">Açık tema</option>
+              <option value="dark">Koyu tema</option>
+            </Select>
             <div className="side-meta">Geliştirme sürümü</div>
-            <div className="sidebar-version">Faz 0 · Foundation</div>
+            <div className="sidebar-version">Faz 0 · P1 hazırlığı</div>
             <div className="side-meta">Fiziksel disk yazma kapalı</div>
           </div>
         </aside>
@@ -94,7 +141,7 @@ export function App() {
         <main className="content" id="main-content">
           <div className="topline">
             <div className="eyebrow">PARTITION 11 / WORKSPACE</div>
-            <Badge appearance="tint" color="success">Güvenli başlangıç</Badge>
+            <Badge appearance="tint" color="informative">Geliştirme ortamı</Badge>
           </div>
           <header className="heading">
             <div>
@@ -120,8 +167,8 @@ export function App() {
             </Card>
             <Card className="stat-card">
               <Text size={200} className="muted">Güvenlik durumu</Text>
-              <div className="stat-word">Salt okunur</div>
-              <Text size={200} className="muted">Değiştirici işlemler devre dışı</Text>
+              <div className="stat-word">İşlemler kapalı</div>
+              <Text size={200} className="muted">Disklere erişim ve yazma uygulanmadı</Text>
             </Card>
           </section>
 
@@ -165,9 +212,15 @@ export function App() {
           </section>
 
           <footer className="footer" aria-live="polite">
-            <div className="status-point" aria-hidden="true"></div>
+            <span className={status && !error ? "status-point ready" : "status-point"} aria-hidden="true"></span>
             {error ? <Text>{error}</Text> : !status ? <><Spinner size="tiny" /><Text>Yerel uygulama doğrulanıyor…</Text></> :
-              <Text>v{status.appVersion} · {status.phase} · Yazma yeteneği: kapalı · Agent: {status.agentConnected ? "bağlı" : "bağlı değil"}</Text>}
+              <Text>v{status.appVersion} · {status.phase} · Disk yazma: kapalı · Agent: bağlı değil</Text>}
+            {display ? (
+              <Text className="display-info" aria-label="Geçerli monitör ölçek bilgisi">
+                Ekran: %{Math.round(display.scaleFactor * 100)} · Kullanılabilir alan: {display.workAreaWidth}×{display.workAreaHeight}
+                {display.highContrast ? " · Yüksek karşıtlık" : ""}
+              </Text>
+            ) : null}
           </footer>
         </main>
       </div>

@@ -1,12 +1,28 @@
 import path from "node:path";
-import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
-import { IPC, type AppStatus } from "../shared/protocol";
+import {
+  app, BrowserWindow, ipcMain, nativeTheme, screen,
+  type IpcMainInvokeEvent
+} from "electron";
+import { IPC, type AppStatus, type DisplayInfo } from "../shared/protocol";
 import { isAllowedFrame } from "./ipc-policy";
 
 const developmentUrl = process.env.PARTITION11_DEV_URL;
 const packagedHtmlPath = path.resolve(__dirname, "../../renderer/index.html");
 
 let mainWindow: BrowserWindow | undefined;
+
+function trustedRequest(event: IpcMainInvokeEvent): boolean {
+  const win = mainWindow;
+  const frame = event.senderFrame;
+  return Boolean(
+    frame &&
+    win &&
+    !win.isDestroyed() &&
+    event.sender.id === win.webContents.id &&
+    frame === win.webContents.mainFrame &&
+    isAllowedFrame(frame.url, packagedHtmlPath, developmentUrl)
+  );
+}
 
 function currentStatus(): AppStatus {
   return {
@@ -21,6 +37,29 @@ function currentStatus(): AppStatus {
       writePhysicalDisks: false
     }
   };
+}
+
+function currentDisplayInfo(): DisplayInfo {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error("No active application window");
+  }
+
+  const display = screen.getDisplayMatching(mainWindow.getBounds());
+  return {
+    protocolVersion: 1,
+    scaleFactor: display.scaleFactor,
+    workAreaWidth: display.workArea.width,
+    workAreaHeight: display.workArea.height,
+    highContrast: nativeTheme.shouldUseHighContrastColors,
+    platform: process.platform === "win32" ? "windows" : "other"
+  };
+}
+
+function announceDisplayChange(): void {
+  const win = mainWindow;
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+    win.webContents.send(IPC.DISPLAY_CHANGED);
+  }
 }
 
 function createWindow(): void {
@@ -44,6 +83,8 @@ function createWindow(): void {
   mainWindow = win;
 
   win.once("ready-to-show", () => win.show());
+  win.on("move", announceDisplayChange);
+  win.on("resize", announceDisplayChange);
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = undefined;
   });
@@ -53,7 +94,7 @@ function createWindow(): void {
 
   if (developmentUrl) {
     const url = new URL(developmentUrl);
-    if (url.origin !== "http://127.0.0.1:5173") {
+    if (url.origin !== "http://127.0.0.1:5173" || url.pathname !== "/") {
       throw new Error("Untrusted development URL");
     }
     void win.loadURL(url.toString());
@@ -66,18 +107,18 @@ app.setAppUserModelId("io.github.illetyus.partition11");
 
 app.whenReady().then(() => {
   ipcMain.handle(IPC.STATUS, event => {
-    const frame = event.senderFrame;
-    if (
-      !frame ||
-      !mainWindow ||
-      event.sender.id !== mainWindow.webContents.id ||
-      frame !== mainWindow.webContents.mainFrame ||
-      !isAllowedFrame(frame.url, packagedHtmlPath, developmentUrl)
-    ) {
-      throw new Error("Unauthorized IPC origin");
-    }
+    if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
     return currentStatus();
   });
+  ipcMain.handle(IPC.DISPLAY_INFO, event => {
+    if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
+    return currentDisplayInfo();
+  });
+
+  screen.on("display-metrics-changed", announceDisplayChange);
+  screen.on("display-added", announceDisplayChange);
+  screen.on("display-removed", announceDisplayChange);
+  nativeTheme.on("updated", announceDisplayChange);
 
   createWindow();
   app.on("activate", () => {
