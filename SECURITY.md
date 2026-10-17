@@ -7,6 +7,8 @@ real disks containing valuable data.
 ## Supported scope
 
 - Phase 0: GUI scaffold, Rust policy library, status-only diagnostic stub.
+- P2: only a memory-only partition-table parser. P2.5: benchmark policy/XML
+  decoder and CI-only owned scratch-file tests, not an end-user benchmark.
 - No raw disks are opened. No disk writes, mounts, repairs, or formats exist.
 - Report vulnerabilities privately through GitHub's private vulnerability
   reporting feature if enabled; otherwise contact the maintainers without
@@ -14,7 +16,9 @@ real disks containing valuable data.
 
 ## Invariants
 
-1. Renderer: `sandbox: true`, `contextIsolation: true`,
+1. Renderer: default-deny web permission requests and permission checks;
+   deny navigation, new windows and webview attachment. Keep renderer
+   `sandbox: true`, `contextIsolation: true`,
    `nodeIntegration: false`, restrictive CSP and no external navigation.
 2. Preload exposes specific allowlisted methods, never raw `ipcRenderer`.
 3. Main validates origin, frame, schema and authorization for all IPC.
