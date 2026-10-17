@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { BENCHMARK_PROFILES, type BenchmarkAvailability, type BenchmarkProfile } from "../shared/benchmark";
+import { BENCHMARK_PROFILES, type BenchmarkAvailability, type BenchmarkProfile, type BenchmarkReport } from "../shared/benchmark";
+import { displayedMeasurement } from "./benchmarkPresentation";
 import type { SampleDisk } from "./previewData";
 import "./benchmark.css";
 
-type Props = { disk: SampleDisk; availability: BenchmarkAvailability };
+type Props = { disk: SampleDisk; availability: BenchmarkAvailability; report?: BenchmarkReport | null };
 
-function ProfileRow({ profile }: { profile: BenchmarkProfile }) {
+function ProfileRow({ profile, report, diskId }: { profile: BenchmarkProfile; report: BenchmarkReport | null; diskId: string }) {
+  const read = displayedMeasurement(report, diskId, profile.id, "read");
+  const write = displayedMeasurement(report, diskId, profile.id, "write");
   return (
     <tr data-testid={"benchmark-profile-" + profile.id}>
       <th scope="row">
@@ -14,17 +17,18 @@ function ProfileRow({ profile }: { profile: BenchmarkProfile }) {
           {profile.pattern === "sequential" ? "Sıralı" : "Rastgele"} · {profile.blockBytes === 1048576 ? "1 MiB" : "4 KiB"} · Q{profile.queueDepth}T{profile.threads}
         </span>
       </th>
-      <td className="bench-value" data-direction="read" aria-label={profile.label + " okuma henüz ölçülmedi"}>—<small>MB/s</small></td>
-      <td className="bench-value" data-direction="write" aria-label={profile.label + " yazma henüz ölçülmedi"}>—<small>MB/s</small></td>
+      <td className="bench-value" data-direction="read" aria-label={profile.label + " okuma henüz ölçülmedi"}>{read?.mbps ?? "—"}<small>MB/s</small></td>
+      <td className="bench-value" data-direction="write" aria-label={profile.label + " yazma henüz ölçülmedi"}>{write?.mbps ?? "—"}<small>MB/s</small></td>
     </tr>
   );
 }
 
-export function BenchmarkPanel({ disk, availability }: Props) {
+export function BenchmarkPanel({ disk, availability, report = null }: Props) {
   const [details, setDetails] = useState(false);
   const [testSize, setTestSize] = useState("1");
   const [repetitions, setRepetitions] = useState("1");
   const hasEngine = availability.engineAvailable; // false in P2.5A by contract
+  const trustedReport = hasEngine && report?.targetVolumeId === disk.id && !disk.id.startsWith("sample-") ? report : null;
   return (
     <div className="benchmark-panel" data-testid="benchmark-workspace">
       <section className="surface bench-intro" aria-labelledby="benchmark-target-title">
@@ -48,16 +52,16 @@ export function BenchmarkPanel({ disk, availability }: Props) {
 
       <section className="surface benchmark-results" aria-labelledby="benchmark-results-title">
         <div className="bench-section-heading">
-          <div><h2 id="benchmark-results-title">Performans sonuçları</h2><p>DiskSpd · Dosya tabanlı testler · Henüz ölçüm yapılmadı</p></div>
+          <div><h2 id="benchmark-results-title">Performans sonuçları</h2><p>DiskSpd · Dosya tabanlı testler · {trustedReport ? "Doğrulanmış ölçüm" : "Henüz ölçüm yapılmadı"}</p></div>
           <span className="bench-preview-label">P2.5A</span>
         </div>
         <div className="bench-table-scroll">
           <table className="bench-table">
             <thead><tr><th scope="col">Test profili</th><th scope="col">Okuma <span>MB/s</span></th><th scope="col">Yazma <span>MB/s</span></th></tr></thead>
-            <tbody>{BENCHMARK_PROFILES.map(profile => <ProfileRow key={profile.id} profile={profile}/>)}</tbody>
+            <tbody>{BENCHMARK_PROFILES.map(profile => <ProfileRow key={profile.id} profile={profile} report={trustedReport} diskId={disk.id}/>)}</tbody>
           </table>
         </div>
-        <p className="bench-empty-report" role="status">Sonuçlar boş bırakılmıştır. Örnek hız değerleri gerçek ölçüm gibi gösterilmez.</p>
+        <p className="bench-empty-report" role="status">{trustedReport ? "Motor: " + trustedReport.engine + " " + trustedReport.engineVersion + " · " + trustedReport.measuredAtUtc : "Sonuçlar boş bırakılmıştır. Örnek hız değerleri gerçek ölçüm gibi gösterilmez."}</p>
       </section>
 
       <section className="surface benchmark-settings" aria-labelledby="benchmark-settings-title">

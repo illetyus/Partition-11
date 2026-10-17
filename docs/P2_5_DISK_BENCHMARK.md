@@ -155,6 +155,29 @@ The UI deliberately shows **no invented scores** and disables Start and Cancel.
 
 A versioned IPC availability query reports only that benchmarking is disabled.
 No DiskSpd binary is distributed; no benchmark worker, arbitrary paths, shell
-commands, raw device access, or actual disk I/O are present. XML parsing,
-owned test-file runtime, cancellation, verified performance data, and physical
+commands, raw device access, or actual disk I/O are present. Owned test-file runtime, cancellation, verified performance data, and physical
 drive acceptance are still open implementation gates.
+
+## P2.5A.2 — DiskSpd XML result decoding
+
+A strict single-run DiskSpd 2.3 XML parser now exists in `src/main/benchmarkXml.ts`.
+It uses a locked third-party XML parser rather than regex to interpret XML.
+The adapter enforces: 1 MiB input bound, 16,000 tag bound, DTD/entity/comment
+prohibition, structural validation, one timespan/target/thread, pinned engine
+version, expected scratch target pathname, workload size/queue/random/write ratio,
+safe numeric bounds, nonzero test duration, internally consistent I/O counts and
+latency percentile monotonicity.
+
+Reference fields came from Microsoft's upstream
+`XmlResultParser/XmlResultParser.cpp` and `Process-DiskSpd.ps1`:
+`Results.TimeSpan.TestTimeSeconds`, `Thread.Target.ReadBytes`,
+`Thread.Target.WriteBytes`, `ReadCount`, `WriteCount`,
+`Latency.AverageReadMilliseconds`, and the percentile `Latency.Bucket` list.
+The test fixtures are **schema-faithful synthetic examples**, not genuine
+hardware measurements. MB/s is decimal: bytes / elapsed seconds / 1e6.
+
+A renderer view-model also accepts a future validated `BenchmarkReport`,
+but it never presents scores for sample disk identities and no live
+benchmark report is connected to the current UI. The worker, owned scratch
+file, identity validation, process cancellation, and hardware tests remain
+separate next-phase work.
