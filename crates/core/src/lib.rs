@@ -82,7 +82,10 @@ mod tests {
     #[test]
     fn inspection_is_policy_allowed_but_not_yet_implemented() {
         for target in targets() {
-            assert_eq!(authorize(&target, Operation::Inspect), Decision::AllowedReadOnly);
+            assert_eq!(
+                authorize(&target, Operation::Inspect),
+                Decision::AllowedReadOnly
+            );
         }
         assert!(!PHASE_0_CAPABILITIES.inspect_images);
         assert!(!PHASE_0_CAPABILITIES.inspect_physical_disks);
