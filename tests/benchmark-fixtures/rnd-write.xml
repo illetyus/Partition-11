@@ -1,5 +1,5 @@
 <Results>
- <System><Tool><Version>2.3</Version></Tool></System>
+ <System><Tool><Version>2.3.0</Version></Tool></System>
  <Profile><TimeSpans><TimeSpan><Targets><Target>
  <BlockSize>4096</BlockSize><RequestCount>32</RequestCount><WriteRatio>100</WriteRatio><Random>4096</Random>
  </Target></Targets></TimeSpan></TimeSpans></Profile>

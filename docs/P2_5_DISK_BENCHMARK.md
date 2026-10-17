@@ -199,3 +199,9 @@ report CI runner speed as representative benchmark scores.
 This is validation code, **not a production storage worker**. The app still
 cannot benchmark actual volumes, and no downloadable DiskSpd binary is
 distributed to Partition 11 users.
+
+The v2.3 release archive's actual XML `System.Tool.Version` is
+`2.3.0` as specified by Microsoft's upstream
+`Common/Version.h` (MAJOR=2, MINOR=3, BUILD=0), distinct from the
+GitHub release tag `v2.3`. Both the integration test and synthetic fixtures
+pin the exact reported XML version. No range or wildcard bypass is allowed.

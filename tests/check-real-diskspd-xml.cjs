@@ -15,7 +15,7 @@ try {
     profileId: "seq1m-q1t1",
     direction: "read",
     ownedTargetPath: expectedScratchFile,
-    pinnedEngineVersion: "2.3"
+    pinnedEngineVersion: "2.3.0"
   });
   if (parsed.measurement.direction !== "read" || parsed.measurement.iops <= 0) {
     throw new Error("Invalid read-only smoke result");

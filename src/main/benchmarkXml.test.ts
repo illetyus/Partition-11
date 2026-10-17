@@ -6,11 +6,11 @@ import { parseDiskSpdXml, type TrustedDiskSpdRun } from "./benchmarkXml";
 
 const readContext: TrustedDiskSpdRun = {
   profileId: "seq1m-q8t1", direction: "read", ownedTargetPath: "P11Owned_A.bin",
-  pinnedEngineVersion: "2.3"
+  pinnedEngineVersion: "2.3.0"
 };
 const writeContext: TrustedDiskSpdRun = {
   profileId: "rnd4k-q32t1", direction: "write", ownedTargetPath: "P11Owned_B.bin",
-  pinnedEngineVersion: "2.3"
+  pinnedEngineVersion: "2.3.0"
 };
 const readXml = readFileSync(path.resolve("tests/benchmark-fixtures/seq-read.xml"), "utf8");
 const writeXml = readFileSync(path.resolve("tests/benchmark-fixtures/rnd-write.xml"), "utf8");
@@ -44,7 +44,7 @@ test("rejects invalid XML, DTD, nested entity, comments and excessive output", (
 });
 test("rejects forged version, path, workload, concurrency and tampered counters", () => {
   const cases = [
-    [readXml.replace("<Version>2.3</Version>", "<Version>9.9</Version>"), readContext],
+    [readXml.replace("<Version>2.3.0</Version>", "<Version>9.9</Version>"), readContext],
     [readXml.replace("P11Owned_A.bin", "P11Owned_other.bin"), readContext],
     [readXml.replace("<RequestCount>8</RequestCount>", "<RequestCount>64</RequestCount>"), readContext],
     [readXml.replace("<WriteRatio>0</WriteRatio>", "<WriteRatio>100</WriteRatio>"), readContext],
