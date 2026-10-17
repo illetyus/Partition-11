@@ -205,3 +205,22 @@ The v2.3 release archive's actual XML `System.Tool.Version` is
 `Common/Version.h` (MAJOR=2, MINOR=3, BUILD=0), distinct from the
 GitHub release tag `v2.3`. Both the integration test and synthetic fixtures
 pin the exact reported XML version. No range or wildcard bypass is allowed.
+
+## P2.5B.1 — Workload allowlist and CI-only scratch lease
+
+The native Electron main source now defines:
+- `benchmarkPolicy.ts`: an allowlisted four-profile / two-direction argument
+  planner with strict finite durations, bounded repetitions, no command
+  shell, no arbitrary user switches and rejection of UNC/raw-device targets.
+- `benchmarkScratch.ts`: exclusive `wx+` scratch-file creation in a
+  private, uniquely named test directory, limited to 4–64 MiB, aligned,
+  with file/directory identity checks and exact-file cleanup.
+- `benchmarkPolicy.test.ts`: workload, path injection, ownership,
+  invalid-size and replaced-file security regression cases.
+
+**Not enabled in production:** These are CI-grade internal primitives, not
+an end-to-end Windows volume authorization mechanism. Windows native
+volume/handle identity, system disk exclusion, exclusive writable volume
+authorization, full process-tree cancellation via Windows Job Objects,
+and a user-facing consent flow remain mandatory P2.5B release gates.
+No Electron IPC launch method or real write benchmark was introduced.
