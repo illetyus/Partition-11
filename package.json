@@ -1,0 +1,56 @@
+{
+  "name": "partition-11",
+  "productName": "Partition 11",
+  "version": "0.1.0",
+  "description": "Windows 11 oriented ext filesystem management desktop app",
+  "private": true,
+  "main": "dist/main/main/main.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "test:main": "npm run build:main && node --test dist/main/main/ipc-policy.test.js",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run typecheck && npm run build:main && npm run build:renderer",
+    "dev": "npm run build:main && concurrently -k \"tsc -p tsconfig.main.json --watch\" \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env PARTITION11_DEV_URL=http://127.0.0.1:5173 electron .\"",
+    "package:win": "npm run build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@fluentui/react-components": "^9.60.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.1.2",
+    "cross-env": "^10.0.0",
+    "electron": "^44.5.0",
+    "electron-builder": "^26.0.0",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0",
+    "wait-on": "^8.0.0"
+  },
+  "build": {
+    "appId": "io.github.illetyus.partition11",
+    "productName": "Partition 11",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "Partition-11-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
