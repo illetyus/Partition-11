@@ -14,7 +14,7 @@
     "dev": "npm run build:main && concurrently -k \"tsc -p tsconfig.main.json --watch\" \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env PARTITION11_DEV_URL=http://127.0.0.1:5173 electron .\"",
     "package:win": "npm run build && electron-builder --win nsis",
     "test:ui:win": "electron tests/windows-ui-smoke.cjs",
-    "package:win:dir": "npm run build && electron-builder --win dir --x64 --publish never -c.win.signAndEditExecutable=false"
+    "package:win:dir": "npm run build && electron-builder --win dir --x64 --publish never"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.60.0",
@@ -50,7 +50,8 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "Partition-11-${version}-${arch}.${ext}"
+      "artifactName": "Partition-11-${version}-${arch}.${ext}",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
