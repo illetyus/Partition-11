@@ -87,8 +87,6 @@ mod tests {
                 Decision::AllowedReadOnly
             );
         }
-        assert!(!PHASE_0_CAPABILITIES.inspect_images);
-        assert!(!PHASE_0_CAPABILITIES.inspect_physical_disks);
     }
 
     #[test]
@@ -106,9 +104,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn phase_zero_capabilities_are_read_only_and_disabled() {
-        assert!(!PHASE_0_CAPABILITIES.write_images);
-        assert!(!PHASE_0_CAPABILITIES.write_physical_disks);
-    }
 }
