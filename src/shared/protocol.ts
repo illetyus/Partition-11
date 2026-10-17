@@ -6,7 +6,8 @@ export const IPC = Object.freeze({
   STATUS: "partition11:status",
   DISPLAY_INFO: "partition11:display-info",
   DISPLAY_CHANGED: "partition11:display-changed",
-  TITLEBAR_THEME: "partition11:titlebar-theme"
+  TITLEBAR_THEME: "partition11:titlebar-theme",
+  BENCHMARK_AVAILABILITY: "partition11:benchmark-availability"
 } as const);
 
 export type AppStatus = Readonly<{
@@ -31,9 +32,12 @@ export type DisplayInfo = Readonly<{
   platform: "windows" | "other";
 }>;
 
+import type { BenchmarkAvailability } from "./benchmark";
+
 export interface Partition11Bridge {
   getStatus(): Promise<AppStatus>;
   getDisplayInfo(): Promise<DisplayInfo>;
+  getBenchmarkAvailability(): Promise<BenchmarkAvailability>;
   setTitlebarTheme(theme: "light" | "dark"): Promise<void>;
   onDisplayChanged(listener: () => void): () => void;
 }

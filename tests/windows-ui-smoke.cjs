@@ -79,6 +79,14 @@ function bridge() {
       platform: process.platform === "win32" ? "windows" : "other"
     };
   });
+  ipcMain.handle("partition11:benchmark-availability", () => ({
+    protocolVersion: 1,
+    phase: "P2.5A",
+    mode: "preview",
+    engineAvailable: false,
+    canRead: false,
+    canWrite: false
+  }));
   ipcMain.handle("partition11:titlebar-theme", (_, theme) => {
     if (!["light", "dark"].includes(theme)) throw new Error("Invalid theme");
     windowRef.setTitleBarOverlay({
@@ -153,6 +161,38 @@ async function main() {
   check(await js("document.querySelector('.warning-box')?.textContent.includes('tüm dosyaları siler')"), "Destructive-action warning is visible");
   check(await js("document.querySelector('[data-testid=format-button]').disabled"), "Format is still disabled in the bottom action area");
   await snap("06-warning-and-action");
+
+  // P2.5A: benchmark screen must be reachable yet never write data.
+  await js("document.querySelector('[data-testid=screen-tab-benchmark]').click()");
+  await waitUntil("document.querySelector('h1')?.textContent === 'Disk Benchmark'");
+  check(await js("document.querySelectorAll('[data-testid^=benchmark-profile-]').length === 4"), "Four benchmark workload presets are visible");
+  check(await js("document.querySelectorAll('.bench-value').length === 8"), "Separate read/write metrics exist for all profiles");
+  check(await js("Array.from(document.querySelectorAll('.bench-value')).every(cell => cell.textContent.includes('—'))"), "Every unmeasured score stays blank");
+  check(await js("document.querySelector('[data-testid=benchmark-start]').disabled"), "Benchmark Start is disabled in P2.5A");
+  check(await js("document.querySelector('[data-testid=benchmark-cancel]').disabled"), "Benchmark Cancel is disabled in P2.5A");
+  check(await js("document.body.textContent.includes('Örnek veri')"), "Benchmark target is marked synthetic");
+  await js("document.querySelector('.theme-toggle').click()");
+  await waitUntil("document.querySelector('.partition-theme')?.dataset.theme === 'light'");
+  await snap("07-benchmark-light");
+
+  await js("document.querySelector('[data-testid=screen-tab-benchmark]') && document.querySelector('.bench-details-toggle').click()");
+  await waitUntil("document.getElementById('benchmark-details') !== null");
+  check(await js("document.querySelector('.bench-details-toggle').getAttribute('aria-expanded') === 'true'"), "Benchmark metrics details expand accessibly");
+  await js("document.querySelector('[data-testid=disk-sample-samsung]').click()");
+  await waitUntil("document.querySelector('#benchmark-target-title')?.textContent === 'Samsung T7'");
+  check(await js("document.querySelector('[data-testid=benchmark-start]').disabled"), "Changing targets never enables live benchmarking");
+  await js("document.querySelector('.theme-toggle').click()");
+  await waitUntil("document.querySelector('.partition-theme')?.dataset.theme === 'dark'");
+  await snap("08-benchmark-dark");
+
+  windowRef.setSize(520, 780);
+  await new Promise(resolve => setTimeout(resolve, 360));
+  check(await js("document.documentElement.scrollWidth <= window.innerWidth + 1"), "Narrow benchmark page has no document-wide horizontal overflow");
+  await snap("09-benchmark-narrow");
+
+  await js("document.querySelector('[data-testid=screen-tab-format]').click()");
+  await waitUntil("document.querySelector('h1')?.textContent === 'Biçimlendir'");
+  check(await js("document.querySelector('[data-testid=format-button]').disabled"), "Returning to format screen keeps format action disabled");
 
   fs.writeFileSync(path.join(output, "ui-smoke-report.json"), JSON.stringify(report, null, 2));
   clearTimeout(watchdog);

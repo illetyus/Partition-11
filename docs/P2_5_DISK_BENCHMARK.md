@@ -1,6 +1,6 @@
 # P2.5 — Disk Benchmark: literature review and implementation plan
 
-Reviewed: 2026-10-17. State: RESEARCHED AND PLANNED. No benchmark worker is implemented.
+Reviewed: 2026-10-17. State: P2.5A benchmark UI and typed, inert IPC in development. No benchmark worker is implemented.
 
 ## Decision and scope
 
@@ -145,3 +145,16 @@ sizes, caching and queue depth differ.
 - crates/benchmark-worker — non-elevated process manager/target validator
 - tests/benchmark-fixtures — synthetic DiskSpd XML and malformed samples
 - .github/workflows/windows-benchmark.yml — disposable file-only tests
+
+## P2.5A implemented in the first preview PR
+
+The existing disk sidebar now includes an independent Benchmark workspace
+with four proposed fixed DiskSpd profiles, separate read/write placeholders,
+draft test-size/repetition settings and expandable IOPS/latency details.
+The UI deliberately shows **no invented scores** and disables Start and Cancel.
+
+A versioned IPC availability query reports only that benchmarking is disabled.
+No DiskSpd binary is distributed; no benchmark worker, arbitrary paths, shell
+commands, raw device access, or actual disk I/O are present. XML parsing,
+owned test-file runtime, cancellation, verified performance data, and physical
+drive acceptance are still open implementation gates.
