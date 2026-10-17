@@ -76,7 +76,10 @@ impl ReadOnlyImage {
         if opened.len() == 0 {
             return Err(ImageReadError::EmptyImage);
         }
-        Ok(Self { len: opened.len(), file })
+        Ok(Self {
+            len: opened.len(),
+            file,
+        })
     }
 
     pub fn len(&self) -> u64 {
@@ -88,7 +91,9 @@ impl ReadOnlyImage {
         if length == 0 || length > MAX_SINGLE_READ {
             return Err(ImageReadError::InvalidReadLength);
         }
-        let end = offset.checked_add(length as u64).ok_or(ImageReadError::OutOfBounds)?;
+        let end = offset
+            .checked_add(length as u64)
+            .ok_or(ImageReadError::OutOfBounds)?;
         if end > self.len {
             return Err(ImageReadError::OutOfBounds);
         }
@@ -104,14 +109,19 @@ impl ReadOnlyImage {
         Ok(bytes)
     }
 
-    pub fn read_sector(&mut self, lba: u64, logical_sector_size: usize) -> Result<Vec<u8>, ImageReadError> {
+    pub fn read_sector(
+        &mut self,
+        lba: u64,
+        logical_sector_size: usize,
+    ) -> Result<Vec<u8>, ImageReadError> {
         if !matches!(logical_sector_size, 512 | 4096) {
             return Err(ImageReadError::InvalidSectorSize);
         }
         if self.len % logical_sector_size as u64 != 0 {
             return Err(ImageReadError::InvalidGeometry);
         }
-        let offset = lba.checked_mul(logical_sector_size as u64)
+        let offset = lba
+            .checked_mul(logical_sector_size as u64)
             .ok_or(ImageReadError::OutOfBounds)?;
         self.read_at(offset, logical_sector_size)
     }
@@ -127,16 +137,26 @@ mod tests {
     struct Fixture(PathBuf);
     impl Fixture {
         fn create(contents: &[u8]) -> Self {
-            let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-            let path = std::env::temp_dir().join(format!("p11-image-{}-{stamp}.img", std::process::id()));
-            let mut file = OpenOptions::new().write(true).create_new(true).open(&path).unwrap();
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path =
+                std::env::temp_dir().join(format!("p11-image-{}-{stamp}.img", std::process::id()));
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
             file.write_all(contents).unwrap();
             file.sync_all().unwrap();
             Self(path)
         }
     }
     impl Drop for Fixture {
-        fn drop(&mut self) { let _ = fs::remove_file(&self.0); }
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
     }
 
     #[test]
@@ -157,31 +177,66 @@ mod tests {
     fn rejects_invalid_lengths_offsets_and_sectors() {
         let fixture = Fixture::create(&vec![0_u8; 4096]);
         let mut img = ReadOnlyImage::open(&fixture.0).unwrap();
-        assert!(matches!(img.read_at(0, 0), Err(ImageReadError::InvalidReadLength)));
-        assert!(matches!(img.read_at(0, MAX_SINGLE_READ + 1), Err(ImageReadError::InvalidReadLength)));
-        assert!(matches!(img.read_at(u64::MAX, 512), Err(ImageReadError::OutOfBounds)));
-        assert!(matches!(img.read_sector(8, 512), Err(ImageReadError::OutOfBounds)));
-        assert!(matches!(img.read_sector(0, 1024), Err(ImageReadError::InvalidSectorSize)));
+        assert!(matches!(
+            img.read_at(0, 0),
+            Err(ImageReadError::InvalidReadLength)
+        ));
+        assert!(matches!(
+            img.read_at(0, MAX_SINGLE_READ + 1),
+            Err(ImageReadError::InvalidReadLength)
+        ));
+        assert!(matches!(
+            img.read_at(u64::MAX, 512),
+            Err(ImageReadError::OutOfBounds)
+        ));
+        assert!(matches!(
+            img.read_sector(8, 512),
+            Err(ImageReadError::OutOfBounds)
+        ));
+        assert!(matches!(
+            img.read_sector(0, 1024),
+            Err(ImageReadError::InvalidSectorSize)
+        ));
     }
 
     #[test]
     fn refuses_directories_empty_images_and_changed_sizes() {
         let empty = Fixture::create(&[]);
-        assert!(matches!(ReadOnlyImage::open(&empty.0), Err(ImageReadError::EmptyImage)));
-        assert!(matches!(ReadOnlyImage::open(&std::env::temp_dir()), Err(ImageReadError::UnsafeTarget)));
+        assert!(matches!(
+            ReadOnlyImage::open(&empty.0),
+            Err(ImageReadError::EmptyImage)
+        ));
+        assert!(matches!(
+            ReadOnlyImage::open(&std::env::temp_dir()),
+            Err(ImageReadError::UnsafeTarget)
+        ));
         let fixture = Fixture::create(&vec![5_u8; 4096]);
         let mut img = ReadOnlyImage::open(&fixture.0).unwrap();
         // A separate handle truncates the disposable fixture, not a user file.
-        OpenOptions::new().write(true).open(&fixture.0).unwrap().set_len(512).unwrap();
-        assert!(matches!(img.read_at(0, 512), Err(ImageReadError::ImageSizeChanged)));
+        OpenOptions::new()
+            .write(true)
+            .open(&fixture.0)
+            .unwrap()
+            .set_len(512)
+            .unwrap();
+        assert!(matches!(
+            img.read_at(0, 512),
+            Err(ImageReadError::ImageSizeChanged)
+        ));
     }
 
     #[test]
     fn refuses_relative_and_unaligned_images() {
-        assert!(matches!(ReadOnlyImage::open(Path::new("relative.img")), Err(ImageReadError::UnsafeTarget)));
+        assert!(matches!(
+            ReadOnlyImage::open(Path::new("relative.img")),
+            Err(ImageReadError::UnsafeTarget)
+        ));
         let fixture = Fixture::create(&vec![0_u8; 513]);
         let mut img = ReadOnlyImage::open(&fixture.0).unwrap();
-        assert!(matches!(img.read_sector(0, 512), Err(ImageReadError::InvalidGeometry)));
+        assert!(matches!(
+            img.read_sector(0, 512),
+            Err(ImageReadError::InvalidGeometry)
+        ));
     }
 
     #[cfg(unix)]
@@ -191,7 +246,10 @@ mod tests {
         let fixture = Fixture::create(&vec![0_u8; 512]);
         let link = fixture.0.with_extension("link");
         symlink(&fixture.0, &link).unwrap();
-        assert!(matches!(ReadOnlyImage::open(&link), Err(ImageReadError::UnsafeTarget)));
+        assert!(matches!(
+            ReadOnlyImage::open(&link),
+            Err(ImageReadError::UnsafeTarget)
+        ));
         fs::remove_file(link).unwrap();
     }
 }

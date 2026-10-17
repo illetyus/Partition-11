@@ -6,8 +6,8 @@
 //! separate privileged Windows agent with independent device validation.
 #![forbid(unsafe_code)]
 
-pub mod partition;
 pub mod image;
+pub mod partition;
 
 /// A named image is a logical target; it is NOT opened by Phase 0.
 #[derive(Debug, Clone, PartialEq, Eq)]
