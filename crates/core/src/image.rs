@@ -136,7 +136,10 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
 
     struct Fixture(PathBuf);
     impl Fixture {
@@ -145,16 +148,26 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            let path =
-                std::env::temp_dir().join(format!("p11-image-{}-{stamp}.img", std::process::id()));
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&path)
-                .unwrap();
-            file.write_all(contents).unwrap();
-            file.sync_all().unwrap();
-            Self(path)
+            // On Windows, timer resolution may be coarser than Rust test
+            // parallelism. Combine timestamp and atomic sequence; retry on a
+            // collision with a prior runner artifact rather than overwriting.
+            for _ in 0..32 {
+                let sequence = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
+                let path = std::env::temp_dir().join(format!(
+                    "p11-image-{}-{stamp}-{sequence}.img",
+                    std::process::id()
+                ));
+                let opened = OpenOptions::new().write(true).create_new(true).open(&path);
+                let mut file = match opened {
+                    Ok(file) => file,
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => panic!("could not create disposable image fixture: {error}"),
+                };
+                file.write_all(contents).unwrap();
+                file.sync_all().unwrap();
+                return Self(path);
+            }
+            panic!("could not reserve unique disposable image fixture after 32 attempts")
         }
     }
     impl Drop for Fixture {
