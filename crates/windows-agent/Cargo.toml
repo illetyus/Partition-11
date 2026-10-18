@@ -1,7 +1,7 @@
 [package]
 name = "partition11-agent"
 version = "0.1.0"
-description = "Unprivileged diagnostic agent with SetupAPI disk interface enumeration; no disk I/O"
+description = "Non-elevated diagnostic agent with SetupAPI discovery and metadata-only Win32 queries; no raw disk reads or writes"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
