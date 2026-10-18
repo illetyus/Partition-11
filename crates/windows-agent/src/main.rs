@@ -27,7 +27,7 @@ fn main() {
             // Device inventory is not a stable identity and grants no capability.
             match disk_discovery::enumerate_disk_interfaces() {
                 Ok(paths) => println!(
-                    "{{\\"protocol_version\\":1,\\"mode\\":\\"diagnostic-only\\",\\"disk_interface_count\\":{},\\"disk_access_enabled\\":false}}",
+                    r#"{{"protocol_version":1,"mode":"diagnostic-only","disk_interface_count":{},"disk_access_enabled":false}}"#,
                     paths.len()
                 ),
                 Err(err) => {
