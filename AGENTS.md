@@ -1,5 +1,37 @@
 # Partition 11 — Agent / future-session instructions
 
+## CURRENT CHECKPOINT — P2-I2c-3 scan-generation primitive MERGED
+
+[PR #37](https://github.com/illetyus/Partition-11/pull/37) merged into
+`main` as `fd920434101ce5b7797caced9d0c451caf86dc2e` after
+**5/5 green PR checks**, resolving the Windows Clippy dead-code findings.
+The agent now has a private atomic `ScanGeneration` to invalidate stale
+scan snapshots; normal aggregate-only metadata scans explicitly invalidate
+their private generation once a scan completes. Tests cover cancelled old
+snapshots, multiple observers and guard isolation. Only a test-only
+convenience constructor is excluded from production lint scope.
+
+**This is a cancellation primitive, NOT event-driven hotplug handling:**
+the current guard is created per invocation; Windows device-change
+notifications do not yet invalidate a shared guard. Same-path/instance-ID
+rapid unplug/replug and durable physical identity remain unaddressed.
+No Electron IPC, raw sectors, write, formatting, mount, UAC or physical
+Windows 11 device acceptance. All disk capability flags remain false.
+
+Post-merge `main` CI for that SHA (CHECK FINAL STATUS before claiming success):
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39144208924),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39144208918),
+[DiskSpd XML](https://github.com/illetyus/Partition-11/actions/runs/39144208949).
+
+**NEXT:** [P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31),
+wire safe Windows PnP notifications to a truly shared agent generation,
+evaluate reliable hardware identity, reject fast replug races, test
+physical NVMe/SATA/USB Windows 11 acceptance. Preserve 5/5 PR gates,
+merge to main, verify new main checks and update this handoff.
+
+---
+
+
 ## LATEST MERGE — P2-I2c-2 PnP instance ID pair validation (2026-10-18)
 
 **[PR #35](https://github.com/illetyus/Partition-11/pull/35) MERGED to main**

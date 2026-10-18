@@ -3,6 +3,22 @@
 Last reviewed: 2026-10-18. Application name is **Partition 11** and the
 GitHub repository remains **illetyus/Partition-11** by user decision.
 
+## P2-I2c-3 checkpoint — cancellable scan generations merged
+
+[PR #37](https://github.com/illetyus/Partition-11/pull/37) was merged
+as `fd920434101ce5b7797caced9d0c451caf86dc2e` with 5/5 passing PR
+checks. It provides a private atomic invalidation primitive and verified
+tests for stale snapshot cancellation; non-elevated aggregate-only scans
+invalidate their generation on normal completion. Windows Clippy checks
+were repaired, not globally disabled.
+
+**Not complete:** PnP device change notifications, shared cross-scan
+generation/handle binding, fast unplug/replug identity, real Windows 11
+hardware acceptance and an authenticated read-only Electron IPC.
+These remain in [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
+All disk read/write GUI capabilities remain false. Verify current CI
+and `main` live before the next engineering increment.
+
 ## Objective
 
 Build a Windows 11-oriented Electron app for safe ext2/ext3/ext4 partition
