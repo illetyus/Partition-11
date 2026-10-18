@@ -3,7 +3,8 @@
 ## NEW CHECKPOINT — Windows SDK C ABI oracle (2026-10-18)
 
 - A new CI-only MSVC + Windows SDK C11 oracle validates native sizes and
-  offsets used by the bounded Rust drive-layout parser. Source:
+  offsets used by the bounded Rust drive-layout parser, while permitting
+  SDK revision differences in unused ordinal/MBR-arm details. Source:
   `tests/windows/drive_layout_abi.c`; runner script:
   `scripts/check-windows-sdk-abi.ps1`; hook in `.github/workflows/ci.yml`.
 - **This checkpoint is source-work until GitHub PR / merge / post-merge CI
