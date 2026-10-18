@@ -61,18 +61,14 @@ pub enum LayoutError {
 }
 
 fn read_u32(data: &[u8], offset: usize) -> Result<u32, LayoutError> {
-    let bytes = data
-        .get(offset..offset + 4)
-        .ok_or(LayoutError::Truncated)?;
+    let bytes = data.get(offset..offset + 4).ok_or(LayoutError::Truncated)?;
     Ok(u32::from_le_bytes(
         bytes.try_into().map_err(|_| LayoutError::Truncated)?,
     ))
 }
 
 fn read_i64(data: &[u8], offset: usize) -> Result<i64, LayoutError> {
-    let bytes = data
-        .get(offset..offset + 8)
-        .ok_or(LayoutError::Truncated)?;
+    let bytes = data.get(offset..offset + 8).ok_or(LayoutError::Truncated)?;
     Ok(i64::from_le_bytes(
         bytes.try_into().map_err(|_| LayoutError::Truncated)?,
     ))
@@ -133,7 +129,9 @@ pub fn parse_drive_layout(
         }
         let offset = begin as u64;
         let size = length as u64;
-        let end = offset.checked_add(size).ok_or(LayoutError::InvalidGeometry)?;
+        let end = offset
+            .checked_add(size)
+            .ok_or(LayoutError::InvalidGeometry)?;
         if offset == 0 || end > disk_capacity || number == 0 {
             return Err(LayoutError::InvalidGeometry);
         }
@@ -218,16 +216,25 @@ mod tests {
 
     #[test]
     fn rejects_truncated_unknown_and_excessive() {
-        assert_eq!(parse_drive_layout(&[], 65_536, None), Err(LayoutError::Truncated));
+        assert_eq!(
+            parse_drive_layout(&[], 65_536, None),
+            Err(LayoutError::Truncated)
+        );
         let mut bytes = fixture(GPT, 1);
         assert_eq!(
             parse_drive_layout(&bytes[..bytes.len() - 1], 65_536, None),
             Err(LayoutError::Truncated)
         );
         bytes[4..8].copy_from_slice(&129_u32.to_le_bytes());
-        assert_eq!(parse_drive_layout(&bytes, 65_536, None), Err(LayoutError::ExcessiveCount));
+        assert_eq!(
+            parse_drive_layout(&bytes, 65_536, None),
+            Err(LayoutError::ExcessiveCount)
+        );
         bytes[..4].copy_from_slice(&55_u32.to_le_bytes());
-        assert_eq!(parse_drive_layout(&bytes, 65_536, None), Err(LayoutError::InvalidStyle));
+        assert_eq!(
+            parse_drive_layout(&bytes, 65_536, None),
+            Err(LayoutError::InvalidStyle)
+        );
     }
 
     #[test]
@@ -235,7 +242,10 @@ mod tests {
         let mut bytes = fixture(GPT, 2);
         entry(&mut bytes, 0, GPT, 1, 4096, 8192);
         entry(&mut bytes, 1, GPT, 2, 8192, 4096);
-        assert_eq!(parse_drive_layout(&bytes, 65_536, Some(512)), Err(LayoutError::Overlap));
+        assert_eq!(
+            parse_drive_layout(&bytes, 65_536, Some(512)),
+            Err(LayoutError::Overlap)
+        );
         entry(&mut bytes, 1, GPT, 1, 16384, 4096);
         assert_eq!(
             parse_drive_layout(&bytes, 65_536, Some(512)),
@@ -270,7 +280,13 @@ mod tests {
 
     #[test]
     fn raw_layout_only_accepts_zero_partition_count() {
-        assert_eq!(parse_drive_layout(&fixture(RAW, 0), 65_536, None).unwrap().occupied.len(), 0);
+        assert_eq!(
+            parse_drive_layout(&fixture(RAW, 0), 65_536, None)
+                .unwrap()
+                .occupied
+                .len(),
+            0
+        );
         assert_eq!(
             parse_drive_layout(&fixture(RAW, 1), 65_536, None),
             Err(LayoutError::InvalidGeometry)
