@@ -126,9 +126,13 @@ Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
 - P2-I2a: native SetupAPI GUID_DEVINTERFACE_DISK discovery with an internal,
   bounded list of Windows interface paths. Diagnostic `discovery-count`
   prints the count only; all UI capabilities stay false. No device opens.
-- P2-I2b: retrieve independently validated read-only device number, capacity,
-  logical/physical sector geometry and partition layout with explicit Win32
-  error handling and no renderer-controlled device paths.
+- P2-I2b: bounded agent-only GENERIC_READ Win32 metadata diagnostic has been
+  implemented on a development branch: temporary device number, capacity,
+  logical/physical sector sizes and bus type, fail-closed elevation policy,
+  structured Win32 errors and pure-parser tests. This is NOT a stable identity
+  or UI disk scan. Partition layout, native CI and hardware acceptance are
+  still required before [#22](https://github.com/illetyus/Partition-11/issues/22)
+  can close. See [metadata design](P2_WINDOWS_DISK_METADATA.md).
 - P2-I2c: stable per-discovery snapshots, hotplug invalidation and agent IPC.
 - [P2-I2 parent #19](https://github.com/illetyus/Partition-11/issues/19).
 
