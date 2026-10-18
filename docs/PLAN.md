@@ -1,5 +1,29 @@
 # Partition 11 implementation plan
 
+## Current checkpoint — P2-I2c-5 query-epoch rejection merged
+
+[PR #41](https://github.com/illetyus/Partition-11/pull/41) merged to
+`main` as `6b9f293dea427f598fdc35ed355d9d39f5d6d3dd` after 5/5 passing
+PR checks. A short-lived agent-private `ProbeEpoch` now prevents starting
+further metadata IOCTLs after a Windows PnP generation change, rejects
+responses even if the call returned success, and checks each bounded
+drive-layout retry. This is fail-closed stale-result rejection, **not**
+forceful cancellation of a blocked synchronous Windows call.
+
+**Next:** [P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31):
+design and test handle-specific query-remove notifications, safe resource
+closure/reopen and blocked-I/O cancellation/timeout, hardware-backed identity
+evaluation and physical Windows 11 hotplug/BitLocker/4Kn acceptance.
+See [query-epoch notes](P2_I2C_QUERY_EPOCH.md).
+No Electron disk privileges or physical writes are enabled.
+New `main` runs: [CI](https://github.com/illetyus/Partition-11/actions/runs/39176273055),
+[UI](https://github.com/illetyus/Partition-11/actions/runs/39176273089),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39176273046);
+verify final statuses separately.
+
+---
+
+
 Last reviewed: 2026-10-18. Application name is **Partition 11** and the
 GitHub repository remains **illetyus/Partition-11** by user decision.
 
