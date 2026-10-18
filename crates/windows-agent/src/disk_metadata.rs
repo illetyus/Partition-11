@@ -366,9 +366,11 @@ fn query_drive_layout(
     handle: &OwnedHandle,
     capacity: u64,
     logical_sector_size: u32,
+    epoch: &ProbeEpoch<'_>,
 ) -> Result<DriveLayout, MetadataError> {
     let mut limit = HEADER_BYTES + ENTRY_BYTES * INITIAL_LAYOUT_SLOTS;
     loop {
+        epoch.ensure_current()?;
         let mut bytes = vec![0_u8; limit];
         let mut returned = 0_u32;
         // SAFETY: Fixed metadata-only GET IOCTL and a private, initialized,
@@ -385,9 +387,14 @@ fn query_drive_layout(
                 ptr::null_mut(),
             )
         };
+        // SAFETY: Snapshot the error immediately, before any other Win32 call.
+        let status = if ok == 0 {
+            unsafe { GetLastError() }
+        } else {
+            0
+        };
+        epoch.ensure_current()?;
         if ok == 0 {
-            // SAFETY: Immediately after failed Win32 call.
-            let status = unsafe { GetLastError() };
             if matches!(
                 status,
                 ERROR_BAD_LENGTH | ERROR_INSUFFICIENT_BUFFER | ERROR_MORE_DATA
@@ -468,43 +475,93 @@ mod layout_abi {
     }
 }
 
+/// Fixed epoch for this diagnostic's lifetime. An interface change means
+/// no subsequent Win32 metadata request may begin, even if a prior request
+/// returned an otherwise valid value. This does not interrupt blocking I/O.
+struct ProbeEpoch<'a> {
+    generation: &'a ScanGeneration,
+    revision: u64,
+}
+
+impl<'a> ProbeEpoch<'a> {
+    fn capture(generation: &'a ScanGeneration) -> Self {
+        Self {
+            generation,
+            revision: generation.revision(),
+        }
+    }
+
+    fn ensure_current(&self) -> Result<(), MetadataError> {
+        if self.generation.revision() != self.revision {
+            Err(MetadataError::IdentityChanged)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn run<T>(
+        &self,
+        operation: impl FnOnce() -> Result<T, MetadataError>,
+    ) -> Result<T, MetadataError> {
+        self.ensure_current()?;
+        let result = operation();
+        // A notification during an I/O call overrides both its success and
+        // an optional "unsupported" result: we must not use stale metadata.
+        self.ensure_current()?;
+        result
+    }
+}
+
 fn query_device_number(handle: &OwnedHandle) -> Result<u32, MetadataError> {
     parse_device_number(&ioctl(handle, IOCTL_STORAGE_GET_DEVICE_NUMBER, &[], 12)?)
 }
 
-fn query_one(path: &[u16]) -> ProbeOutcome {
+fn query_one(path: &[u16], epoch: &ProbeEpoch<'_>) -> ProbeOutcome {
     let result = (|| {
-        let handle = open_agent_discovered_path(path)?;
-        let before = query_device_number(&handle)?;
-        let capacity_bytes =
-            ioctl(&handle, IOCTL_DISK_GET_LENGTH_INFO, &[], 8).and_then(|b| parse_disk_length(&b));
-        let sectors = ioctl(
-            &handle,
-            IOCTL_STORAGE_QUERY_PROPERTY,
-            &property_input(STORAGE_ACCESS_ALIGNMENT_PROPERTY),
-            28,
-        )
-        .and_then(|b| parse_sector_sizes(&b));
-        let bus_type = ioctl(
-            &handle,
-            IOCTL_STORAGE_QUERY_PROPERTY,
-            &property_input(STORAGE_DEVICE_PROPERTY),
-            MAX_DESCRIPTOR,
-        )
-        .and_then(|b| parse_bus_type(&b));
+        // Check both before and after CreateFileW: an event racing with open
+        // must invalidate the new handle before any metadata IOCTL begins.
+        let handle = epoch.run(|| open_agent_discovered_path(path))?;
+        let before = epoch.run(|| query_device_number(&handle))?;
+        let capacity_bytes = epoch.run(|| {
+            ioctl(&handle, IOCTL_DISK_GET_LENGTH_INFO, &[], 8).and_then(|b| parse_disk_length(&b))
+        });
+        epoch.ensure_current()?;
+        let sectors = epoch.run(|| {
+            ioctl(
+                &handle,
+                IOCTL_STORAGE_QUERY_PROPERTY,
+                &property_input(STORAGE_ACCESS_ALIGNMENT_PROPERTY),
+                28,
+            )
+            .and_then(|b| parse_sector_sizes(&b))
+        });
+        epoch.ensure_current()?;
+        let bus_type = epoch.run(|| {
+            ioctl(
+                &handle,
+                IOCTL_STORAGE_QUERY_PROPERTY,
+                &property_input(STORAGE_DEVICE_PROPERTY),
+                MAX_DESCRIPTOR,
+            )
+            .and_then(|b| parse_bus_type(&b))
+        });
+        epoch.ensure_current()?;
         // Fail closed if capacity or logical-sector geometry is unavailable;
         // otherwise ask Windows for bounded partition metadata only.
         let partition_layout = match (&capacity_bytes, &sectors) {
             (Ok(capacity), Ok(sizes)) => match sizes.logical {
-                Some(logical) => query_drive_layout(&handle, *capacity, logical),
+                Some(logical) => {
+                    epoch.run(|| query_drive_layout(&handle, *capacity, logical, epoch))
+                }
                 None => Err(MetadataError::Unsupported),
             },
             _ => Err(MetadataError::Unsupported),
         };
-        // Detect reuse/removal on the same handle, but do NOT treat equality
-        // as durable or strong device identity. P2-I2c must solve that.
-        let after = query_device_number(&handle)?;
+        epoch.ensure_current()?;
+        // Same-handle number matching cannot prove hardware identity.
+        let after = epoch.run(|| query_device_number(&handle))?;
         validate_number_stable(before, after)?;
+        epoch.ensure_current()?;
         Ok(DiskMetadata {
             device_number: before,
             capacity_bytes,
@@ -553,8 +610,10 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
     let generation = ScanGeneration::default();
     let notifications = crate::pnp_notifications::DiskNotifications::register(&generation)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
-    let starting_revision = generation.revision();
+    let epoch = ProbeEpoch::capture(&generation);
+    let starting_revision = epoch.revision;
     let before = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
+    epoch.ensure_current().map_err(ScanError::Security)?;
     // A scan is short-lived and private to this invocation; never mint
     // persistent disk IDs from PnP paths or temporary disk numbers.
     let snapshot = generation
@@ -562,8 +621,9 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
     let results: Vec<_> = before
         .iter()
-        .map(|record| query_one(&record.path))
+        .map(|record| query_one(&record.path, &epoch))
         .collect();
+    epoch.ensure_current().map_err(ScanError::Security)?;
     let after = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
     let numbers: Vec<_> = results
         .iter()
@@ -597,6 +657,47 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn cancelled_epoch_never_starts_a_later_device_query() {
+        let generation = ScanGeneration::default();
+        let epoch = ProbeEpoch::capture(&generation);
+        generation.invalidate();
+        let ran = Cell::new(false);
+        assert_eq!(
+            epoch.run(|| {
+                ran.set(true);
+                Ok::<u32, MetadataError>(7)
+            }),
+            Err(MetadataError::IdentityChanged)
+        );
+        assert!(!ran.get(), "cancelled scan must not issue more Win32 I/O");
+    }
+
+    #[test]
+    fn event_during_query_discards_even_successful_or_optional_results() {
+        let generation = ScanGeneration::default();
+        let first = ProbeEpoch::capture(&generation);
+        assert_eq!(
+            first.run(|| {
+                generation.invalidate();
+                Ok::<u32, MetadataError>(123)
+            }),
+            Err(MetadataError::IdentityChanged)
+        );
+
+        let second = ProbeEpoch::capture(&generation);
+        assert_eq!(
+            second.run(|| {
+                generation.invalidate();
+                Err::<u32, MetadataError>(MetadataError::Unsupported)
+            }),
+            Err(MetadataError::IdentityChanged)
+        );
+        let fresh = ProbeEpoch::capture(&generation);
+        assert_eq!(fresh.run(|| Ok::<u32, MetadataError>(9)), Ok(9));
+    }
 
     #[test]
     fn bounded_layout_decoder_rejects_bad_buffer_and_geometry() {
