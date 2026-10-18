@@ -145,3 +145,26 @@ any future renderer selection. P2-I2c must next use validated PnP instance
 context, storage identifiers where genuinely reliable, generation/expiry
 binding and invalidation on device change with hardware tests. No new
 capabilities or physical disk writes are enabled.
+
+## P2-I2c-2 — Windows PnP instance ID pair validation (2026-10-18)
+
+During the same SetupAPI enumeration, each `GUID_DEVINTERFACE_DISK`
+interface path is paired with the supporting devnode's
+`SetupDiGetDeviceInstanceIdW` value, using a bounded UTF-16 output
+buffer. `SP_DEVINFO_DATA` layout is independently checked using Windows
+SDK C assertions on the Windows CI runner. A single ephemeral scan now
+compares the full **(interface path, instance ID)** set before and after
+read-only disk metadata queries. An unchanged path with a *different*
+instance ID invalidates the whole scan. Duplicate instance IDs and invalid
+or missing values fail closed. No instance IDs leave the local agent.
+
+This is an improved **operating system device-instance observation**, not
+hardware-backed identity or proof against rapid replug using the same
+instance ID. Event-driven PnP change generations and genuinely reliable
+hardware identifiers, device-open race tests, and actual Windows 11
+removable-device acceptance remain unimplemented. None of the four
+Electron disk capability flags are enabled.
+
+Microsoft references:
+https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw
+https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinstanceidw

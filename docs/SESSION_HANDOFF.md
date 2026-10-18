@@ -1,5 +1,24 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## P2-I2c-2 — PnP aygıt örneği kimliği karşılaştırması (2026-10-18)
+
+- Disk keşfinde her arayüz yolunun yanında Windows'un
+  `SetupDiGetDeviceInstanceIdW` ile sunduğu PnP örnek kimliği
+  eşleştiriliyor. Tarama başı/sonunda yol ve kimlik birlikte kontrol
+  ediliyor; kimlik değişirse tüm sonuç reddediliyor.
+- Tekrarlanan veya geçersiz örnek kimlikleri reddediliyor. Bağımsız
+  Windows SDK C denetimi `SP_DEVINFO_DATA` boyutlarını sınayacak.
+- **Bu bilgi geçici bir Windows devnode kimliğidir, fiziksel aygıtın
+  değişmediğine dair kriptografik veya donanımsal bir garanti değildir.**
+  Aynı kimliği kullanan hızlı çıkar/tak olayları hâlâ ayrıca izlenmeli.
+- GUI disk erişimi, fiziksel sektör okuma/yazma, biçimlendirme, UAC,
+  gerçek USB hotplug kabulü hâlâ kapalı veya yapılmadı.
+- P2-I2c [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+  açık kalacak. Yeni oturum ilk olarak gerçek `main`/PR/CI'yi doğrulasın.
+
+---
+
+
 ## EN SON MAIN MERGE — P2-I2c-1 tarama değişikliği güvenlik denetimi
 
 - [PR #33](https://github.com/illetyus/Partition-11/pull/33), beş başarılı

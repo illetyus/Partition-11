@@ -546,13 +546,13 @@ impl fmt::Display for ScanError {
 /// A later, independent SetupAPI pass rejects paths that disappeared.
 pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanError> {
     reject_elevated_process().map_err(ScanError::Security)?;
-    let before = disk_discovery::enumerate_disk_interfaces().map_err(ScanError::Discovery)?;
+    let before = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
     // A scan is short-lived and private to this invocation; never mint
     // persistent disk IDs from PnP paths or temporary disk numbers.
     let snapshot = ScanSnapshot::capture(&before)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
-    let results: Vec<_> = before.iter().map(|p| query_one(p)).collect();
-    let after = disk_discovery::enumerate_disk_interfaces().map_err(ScanError::Discovery)?;
+    let results: Vec<_> = before.iter().map(|record| query_one(&record.path)).collect();
+    let after = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
     let numbers: Vec<_> = results
         .iter()
         .filter_map(|result| match result {

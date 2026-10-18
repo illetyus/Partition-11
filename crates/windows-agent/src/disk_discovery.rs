@@ -21,6 +21,7 @@ const ERROR_NO_MORE_ITEMS: u32 = 259;
 const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
 const MAX_DISK_INTERFACES: u32 = 256;
 const MAX_DETAIL_BYTES: usize = 32 * 1024;
+const MAX_INSTANCE_UNITS: u32 = 2048;
 
 // Ntddstor.h GUID_DEVINTERFACE_DISK: {53F56307-B6BF-11D0-94F2-00A0C91EFB8B}
 #[repr(C)]
@@ -58,6 +59,35 @@ impl DeviceInterfaceData {
     }
 }
 
+/// setupapi.h SP_DEVINFO_DATA; size/alignment also checked against SDK C CI.
+#[repr(C)]
+struct DeviceInfoData {
+    cb_size: u32,
+    class_guid: Guid,
+    dev_inst: u32,
+    reserved: usize,
+}
+
+impl DeviceInfoData {
+    fn new() -> Self {
+        Self {
+            cb_size: size_of::<Self>() as u32,
+            class_guid: DISK_GUID,
+            dev_inst: 0,
+            reserved: 0,
+        }
+    }
+}
+
+/// An internal-only PnP path + Windows device instance-id observation.
+/// The instance ID is NOT a hardware-authenticated identifier or proof that
+/// an unplugged disk wasn't replaced with another disk on the same port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DiskInterface {
+    pub path: Vec<u16>,
+    pub instance_id: Vec<u16>,
+}
+
 type Hdevinfo = *mut c_void;
 const INVALID_HANDLE_VALUE: Hdevinfo = -1_isize as Hdevinfo;
 
@@ -83,6 +113,13 @@ extern "system" {
         detail_size: u32,
         required_size: *mut u32,
         device_info_data: *mut c_void,
+    ) -> i32;
+    fn SetupDiGetDeviceInstanceIdW(
+        set: Hdevinfo,
+        device_info_data: *mut DeviceInfoData,
+        instance_id: *mut u16,
+        capacity_chars: u32,
+        required_chars: *mut u32,
     ) -> i32;
     fn SetupDiDestroyDeviceInfoList(set: Hdevinfo) -> i32;
 }
@@ -148,9 +185,70 @@ fn copy_detail_path(words: &[u64], actual_bytes: usize) -> Result<Vec<u16>, Disc
     Ok(units[..end].to_vec())
 }
 
-/// Discover currently present disk interfaces. Does not open physical disks.
-/// The returned internal UTF-16 locators are not a stable identity.
-pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryError> {
+/// A two-pass, bounded native Windows SDK instance ID query.
+fn get_device_instance_id(
+    set: Hdevinfo,
+    info: &mut DeviceInfoData,
+) -> Result<Vec<u16>, DiscoveryError> {
+    let mut needed = 0_u32;
+    // SAFETY: DeviceInfoData is initialized to the matching C struct
+    // layout and belongs to the live SetupAPI information set.
+    let ok = unsafe {
+        SetupDiGetDeviceInstanceIdW(set, info, ptr::null_mut(), 0, &mut needed)
+    };
+    let status = if ok == 0 {
+        // SAFETY: GetLastError is sampled immediately after the failing API.
+        unsafe { GetLastError() }
+    } else {
+        0
+    };
+    if ok != 0 || status != ERROR_INSUFFICIENT_BUFFER {
+        return Err(DiscoveryError::Win32 {
+            step: "SetupDiGetDeviceInstanceIdW/size",
+            code: status,
+        });
+    }
+    if !(2..=MAX_INSTANCE_UNITS).contains(&needed) {
+        return Err(DiscoveryError::UnexpectedResponse);
+    }
+    let mut units = vec![0_u16; needed as usize];
+    let mut returned = 0_u32;
+    // SAFETY: The buffer is allocated for 'needed' WCHARs, and Win32
+    // receives the same character count, not a byte count.
+    let ok = unsafe {
+        SetupDiGetDeviceInstanceIdW(
+            set,
+            info,
+            units.as_mut_ptr(),
+            needed,
+            &mut returned,
+        )
+    };
+    if ok == 0 {
+        // SAFETY: Error sampled immediately after failed Win32 call.
+        return Err(DiscoveryError::Win32 {
+            step: "SetupDiGetDeviceInstanceIdW/data",
+            code: unsafe { GetLastError() },
+        });
+    }
+    parse_instance_id(&units, returned as usize)
+}
+
+/// Verify exactly one nonempty, NUL-terminated UTF-16 instance ID.
+fn parse_instance_id(units: &[u16], returned: usize) -> Result<Vec<u16>, DiscoveryError> {
+    if !(2..=MAX_INSTANCE_UNITS as usize).contains(&returned)
+        || returned > units.len()
+        || units[returned - 1] != 0
+        || units[..returned - 1].contains(&0)
+    {
+        return Err(DiscoveryError::UnexpectedResponse);
+    }
+    Ok(units[..returned - 1].to_vec())
+}
+
+/// Enumerate paired PnP locators and device instance IDs while the same
+/// SetupAPI device set is alive. Does not open physical disks.
+pub(crate) fn enumerate_disk_records() -> Result<Vec<DiskInterface>, DiscoveryError> {
     // SAFETY: The GUID has the Windows layout, optional pointers are NULL,
     // flags request only present device-interface metadata.
     let raw = unsafe {
@@ -231,6 +329,7 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
         // SAFETY: Allocated 8-byte aligned, >=6 bytes; first DWORD writable.
         unsafe { (words.as_mut_ptr() as *mut u32).write(cb_size) };
         let mut returned = 0_u32;
+        let mut info = DeviceInfoData::new();
         // SAFETY: Win32 receives a byte-buffer pointer to an initialized,
         // properly aligned writable allocation of size >= needed.
         let ok = unsafe {
@@ -240,7 +339,7 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
                 words.as_mut_ptr().cast(),
                 needed,
                 &mut returned,
-                ptr::null_mut(),
+                (&mut info as *mut DeviceInfoData).cast(),
             )
         };
         if ok == 0 {
@@ -253,10 +352,21 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
         if !(6..=needed).contains(&returned) {
             return Err(DiscoveryError::UnexpectedResponse);
         }
-        interfaces.push(copy_detail_path(&words, returned as usize)?);
+        let path = copy_detail_path(&words, returned as usize)?;
+        let instance_id = get_device_instance_id(set.0, &mut info)?;
+        interfaces.push(DiskInterface { path, instance_id });
     }
 
     Err(DiscoveryError::LimitExceeded)
+}
+
+/// Preserve count-only legacy diagnostic, but require the PnP instance
+/// retrieval to succeed before acknowledging a discovered device.
+pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryError> {
+    Ok(enumerate_disk_records()?
+        .into_iter()
+        .map(|record| record.path)
+        .collect())
 }
 
 #[cfg(test)]
@@ -277,13 +387,22 @@ mod tests {
     }
 
     #[test]
+    fn instance_id_parser_rejects_missing_or_embedded_terminator() {
+        assert_eq!(parse_instance_id(&[65, 66, 0], 3).unwrap(), vec![65, 66]);
+        assert!(parse_instance_id(&[0], 1).is_err());
+        assert!(parse_instance_id(&[65, 66], 2).is_err());
+        assert!(parse_instance_id(&[65, 0, 66, 0], 4).is_err());
+        assert!(parse_instance_id(&[65, 0], 3).is_err());
+    }
+
+    #[test]
     fn windows_setupapi_enumeration_is_bounded_and_non_mutating() {
         // CI Windows Server VM check, NOT physical Windows 11 acceptance.
         // No disk handles are opened and no raw data is accessed.
-        let devices = enumerate_disk_interfaces().expect("SetupAPI disk interface enumeration");
+        let devices = enumerate_disk_records().expect("SetupAPI disk interface enumeration");
         assert!(devices.len() <= MAX_DISK_INTERFACES as usize);
-        assert!(devices.iter().all(|p| !p.is_empty()));
-        let unique: std::collections::HashSet<_> = devices.iter().collect();
+        assert!(devices.iter().all(|d| !d.path.is_empty() && !d.instance_id.is_empty()));
+        let unique: std::collections::HashSet<_> = devices.iter().map(|d| &d.path).collect();
         assert_eq!(unique.len(), devices.len());
     }
 }

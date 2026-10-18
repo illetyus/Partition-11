@@ -1,64 +1,83 @@
-//! P2-I2c-1: ephemeral, fail-closed Windows disk inventory guard.
+//! P2-I2c-2: fail-closed, ephemeral Windows PnP inventory cross-check.
 //!
-//! No handles, serials, paths or disk numbers leave the local agent. This
-//! protects a single diagnostic scan against observable topology changes,
-//! duplicate locators / temporary OS numbers, and stale scan lifetimes.
+//! The Windows SetupAPI device instance ID is paired with the interface path
+//! within the SAME device info set. Changes to either invalidate the entire
+//! diagnostic scan. No values leave the agent or become renderer handles.
 //!
-//! IMPORTANT: A PnP path/number can be reused after a fast remove/replug.
-//! Equality across two enumerations is NOT a durable physical identity.
-//! Later P2-I2c work must add Windows PnP instance/storage identifiers and
-//! event-driven invalidation before any renderer or data-access capability.
+//! A device instance ID is an OS PnP label and can be reused for a newly
+//! inserted physical disk, particularly for devices without real serials.
+//! This does not prove strong identity or eliminate rapid unplug/replug races.
 
-use std::collections::HashSet;
+use crate::disk_discovery::DiskInterface;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 const MAX_INTERFACES: usize = 256;
 const MAX_PATH_UNITS: usize = 16 * 1024;
+const MAX_INSTANCE_UNITS: usize = 2048;
 const MAX_SCAN_AGE: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ScanIdentityError {
     InvalidLocator,
+    InvalidInstanceId,
     DuplicateLocator,
+    DuplicateInstanceId,
     InventoryChanged,
     DuplicateDeviceNumber,
     Expired,
 }
 
 pub(crate) struct ScanSnapshot {
-    original: HashSet<Vec<u16>>,
+    original: HashMap<Vec<u16>, Vec<u16>>,
     started: Instant,
 }
 
-fn unique_paths(paths: &[Vec<u16>]) -> Result<HashSet<Vec<u16>>, ScanIdentityError> {
-    if paths.len() > MAX_INTERFACES {
+fn unique_records(
+    records: &[DiskInterface],
+) -> Result<HashMap<Vec<u16>, Vec<u16>>, ScanIdentityError> {
+    if records.len() > MAX_INTERFACES {
         return Err(ScanIdentityError::InvalidLocator);
     }
-    let mut seen = HashSet::with_capacity(paths.len());
-    for path in paths {
-        if path.is_empty() || path.len() > MAX_PATH_UNITS || path.contains(&0) {
+    let mut by_path = HashMap::with_capacity(records.len());
+    let mut ids = HashSet::with_capacity(records.len());
+    for record in records {
+        if record.path.is_empty()
+            || record.path.len() > MAX_PATH_UNITS
+            || record.path.contains(&0)
+        {
             return Err(ScanIdentityError::InvalidLocator);
         }
-        if !seen.insert(path.clone()) {
+        if record.instance_id.is_empty()
+            || record.instance_id.len() > MAX_INSTANCE_UNITS
+            || record.instance_id.contains(&0)
+        {
+            return Err(ScanIdentityError::InvalidInstanceId);
+        }
+        if by_path.insert(record.path.clone(), record.instance_id.clone()).is_some() {
             return Err(ScanIdentityError::DuplicateLocator);
         }
+        // A conservative invariant for GUID_DEVINTERFACE_DISK only.
+        // If a driver exposes two disk paths from one devnode, reject it
+        // rather than pretending they are independently identifiable.
+        if !ids.insert(record.instance_id.clone()) {
+            return Err(ScanIdentityError::DuplicateInstanceId);
+        }
     }
-    Ok(seen)
+    Ok(by_path)
 }
 
 fn verify_scan(
-    initial: &HashSet<Vec<u16>>,
-    current: &[Vec<u16>],
+    initial: &HashMap<Vec<u16>, Vec<u16>>,
+    current: &[DiskInterface],
     disk_numbers: &[u32],
     elapsed: Duration,
 ) -> Result<(), ScanIdentityError> {
     if elapsed > MAX_SCAN_AGE {
         return Err(ScanIdentityError::Expired);
     }
-    let latest = unique_paths(current)?;
+    let latest = unique_records(current)?;
     if *initial != latest {
-        // Any appearance, removal or path reassignment invalidates the
-        // whole aggregate; reordering without changes is acceptable.
         return Err(ScanIdentityError::InventoryChanged);
     }
     let unique_numbers: HashSet<_> = disk_numbers.iter().copied().collect();
@@ -69,24 +88,19 @@ fn verify_scan(
 }
 
 impl ScanSnapshot {
-    pub(crate) fn capture(paths: &[Vec<u16>]) -> Result<Self, ScanIdentityError> {
+    pub(crate) fn capture(records: &[DiskInterface]) -> Result<Self, ScanIdentityError> {
         Ok(Self {
-            original: unique_paths(paths)?,
+            original: unique_records(records)?,
             started: Instant::now(),
         })
     }
 
     pub(crate) fn validate(
         &self,
-        current: &[Vec<u16>],
+        current: &[DiskInterface],
         disk_numbers: &[u32],
     ) -> Result<(), ScanIdentityError> {
-        verify_scan(
-            &self.original,
-            current,
-            disk_numbers,
-            self.started.elapsed(),
-        )
+        verify_scan(&self.original, current, disk_numbers, self.started.elapsed())
     }
 }
 
@@ -94,90 +108,120 @@ impl ScanSnapshot {
 mod tests {
     use super::*;
 
-    fn path(value: &str) -> Vec<u16> {
-        value.encode_utf16().collect()
+    fn disk(path: &str, id: &str) -> DiskInterface {
+        DiskInterface {
+            path: path.encode_utf16().collect(),
+            instance_id: id.encode_utf16().collect(),
+        }
     }
 
-    fn baseline() -> Vec<Vec<u16>> {
-        vec![path("pnp-disk-a"), path("pnp-disk-b")]
-    }
-
-    #[test]
-    fn reordered_inventory_with_distinct_numbers_is_accepted() {
-        let original = baseline();
-        let snapshot = ScanSnapshot::capture(&original).unwrap();
-        let reversed = vec![path("pnp-disk-b"), path("pnp-disk-a")];
-        assert_eq!(snapshot.validate(&reversed, &[3, 7]), Ok(()));
+    fn baseline() -> Vec<DiskInterface> {
+        vec![disk("path-A", "instance-A"), disk("path-B", "instance-B")]
     }
 
     #[test]
-    fn removing_replugging_or_reassigning_path_invalidates_every_result() {
-        let original = baseline();
-        let snap = ScanSnapshot::capture(&original).unwrap();
+    fn accepts_reordering_of_identical_path_instance_pairs() {
+        let snap = ScanSnapshot::capture(&baseline()).unwrap();
         assert_eq!(
-            snap.validate(&[path("pnp-disk-a")], &[3]),
-            Err(ScanIdentityError::InventoryChanged)
+            snap.validate(
+                &[disk("path-B", "instance-B"), disk("path-A", "instance-A")],
+                &[3, 7]
+            ),
+            Ok(())
         );
+    }
+
+    #[test]
+    fn removal_addition_and_path_reassignment_fail_closed() {
+        let snap = ScanSnapshot::capture(&baseline()).unwrap();
         assert_eq!(
-            snap.validate(&[path("pnp-disk-a"), path("pnp-disk-c")], &[3, 7]),
+            snap.validate(&[disk("path-A", "instance-A")], &[3]),
             Err(ScanIdentityError::InventoryChanged)
         );
         assert_eq!(
             snap.validate(
-                &[path("pnp-disk-a"), path("pnp-disk-b"), path("new-disk")],
-                &[3, 7, 8]
+                &[disk("path-A", "instance-A"), disk("path-C", "instance-C")],
+                &[3, 7]
+            ),
+            Err(ScanIdentityError::InventoryChanged)
+        );
+        assert_eq!(
+            snap.validate(
+                &[disk("path-A", "instance-B"), disk("path-B", "instance-A")],
+                &[3, 7]
             ),
             Err(ScanIdentityError::InventoryChanged)
         );
     }
 
     #[test]
-    fn duplicate_and_invalid_locators_fail_closed() {
-        assert!(matches!(
-            ScanSnapshot::capture(&[path("same"), path("same")]),
-            Err(ScanIdentityError::DuplicateLocator)
-        ));
-        assert!(matches!(
-            ScanSnapshot::capture(&[vec![]]),
-            Err(ScanIdentityError::InvalidLocator)
-        ));
-        assert!(matches!(
-            ScanSnapshot::capture(&[vec![1, 0, 2]]),
-            Err(ScanIdentityError::InvalidLocator)
-        ));
-        let snapshot = ScanSnapshot::capture(&baseline()).unwrap();
+    fn changed_instance_id_rejected_even_if_path_unchanged() {
+        let snap = ScanSnapshot::capture(&baseline()).unwrap();
         assert_eq!(
-            snapshot.validate(&[path("pnp-disk-a"), path("pnp-disk-a")], &[3, 7]),
-            Err(ScanIdentityError::DuplicateLocator)
+            snap.validate(
+                &[disk("path-A", "new-instance"), disk("path-B", "instance-B")],
+                &[3, 7]
+            ),
+            Err(ScanIdentityError::InventoryChanged)
         );
+        // Same instance ID after replug STILL does not prove same hardware.
+        assert_eq!(snap.validate(&baseline(), &[3, 7]), Ok(()));
     }
 
     #[test]
-    fn reused_or_duplicate_os_disk_numbers_are_ambiguous() {
-        let original = baseline();
-        let snap = ScanSnapshot::capture(&original).unwrap();
-        assert_eq!(
-            snap.validate(&original, &[11, 11]),
-            Err(ScanIdentityError::DuplicateDeviceNumber)
-        );
-        assert_eq!(
-            snap.validate(&original, &[u32::MAX]),
-            Err(ScanIdentityError::DuplicateDeviceNumber)
-        );
-        // These numbers are valid only for this one scan; equal numbers in
-        // successive scans do not imply identical physical disks.
-        assert_eq!(snap.validate(&original, &[11, 12]), Ok(()));
+    fn ambiguous_or_invalid_instance_and_path_are_rejected() {
+        assert!(matches!(
+            ScanSnapshot::capture(&[disk("p", "instance"), disk("p", "instance-2")]),
+            Err(ScanIdentityError::DuplicateLocator)
+        ));
+        assert!(matches!(
+            ScanSnapshot::capture(&[disk("p", "instance"), disk("q", "instance")]),
+            Err(ScanIdentityError::DuplicateInstanceId)
+        ));
+        assert!(matches!(
+            ScanSnapshot::capture(&[disk("p", "")]),
+            Err(ScanIdentityError::InvalidInstanceId)
+        ));
+        assert!(matches!(
+            ScanSnapshot::capture(&[disk("", "id")]),
+            Err(ScanIdentityError::InvalidLocator)
+        ));
+        let mut bad = disk("p", "id");
+        bad.instance_id.push(0);
+        assert!(matches!(
+            ScanSnapshot::capture(&[bad]),
+            Err(ScanIdentityError::InvalidInstanceId)
+        ));
     }
 
     #[test]
-    fn elapsed_scans_expire_without_external_timers() {
-        let original = unique_paths(&baseline()).unwrap();
+    fn duplicate_temporary_numbers_and_age_expire_the_whole_scan() {
+        let records = baseline();
+        let snap = ScanSnapshot::capture(&records).unwrap();
         assert_eq!(
-            verify_scan(&original, &baseline(), &[1, 2], Duration::from_secs(121)),
+            snap.validate(&records, &[11, 11]),
+            Err(ScanIdentityError::DuplicateDeviceNumber)
+        );
+        assert_eq!(
+            snap.validate(&records, &[u32::MAX]),
+            Err(ScanIdentityError::DuplicateDeviceNumber)
+        );
+        assert_eq!(
+            verify_scan(
+                &unique_records(&records).unwrap(),
+                &records,
+                &[1, 2],
+                Duration::from_secs(121)
+            ),
             Err(ScanIdentityError::Expired)
         );
         assert_eq!(
-            verify_scan(&original, &baseline(), &[1, 2], Duration::from_secs(120)),
+            verify_scan(
+                &unique_records(&records).unwrap(),
+                &records,
+                &[1, 2],
+                Duration::from_secs(120)
+            ),
             Ok(())
         );
     }
