@@ -1,5 +1,36 @@
 # Partition 11 — Agent / future-session instructions
 
+## NEWEST VERIFIED CODE MERGE — Windows PnP scan invalidation (2026-10-18)
+
+- [PR #39](https://github.com/illetyus/Partition-11/pull/39) **merged into
+  `main`** at `23c3e4f03ede81c1ba7cc94bffa69aa298065bd6`
+  after **5/5 successful pre-merge checks**. One DiskSpd run failed from
+  an external Microsoft ZIP network timeout and was **rerun successfully**
+  on the same commit; checks were not bypassed.
+- New `pnp_notifications.rs`: a non-elevated short-lived
+  `CM_Register_Notification(GUID_DEVINTERFACE_DISK)` subscription starts
+  before first SetupAPI enumeration, sending arrival/removal events to
+  the same agent-private `ScanGeneration`. Callback does atomic
+  invalidation only; it never opens a disk or blocks.
+- After metadata queries, the observer unregisters and checks the generation
+  and full PnP inventory again. Missing notification registration or
+  teardown failure returns an error; no renderer or user-visible disk
+  access is enabled. The Windows SDK C ABI oracle validates the x64
+  `CM_NOTIFY_FILTER`; hosted Windows registration and synthetic callback
+  tests passed. **This is NOT real hardware hotplug acceptance.**
+- Fresh `main` tests for this merge:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39164828649),
+  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39164828633),
+  [DiskSpd XML](https://github.com/illetyus/Partition-11/actions/runs/39164828608).
+  **Verify the final outcomes before calling post-merge green.**
+- **Next issue remains [P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31):**
+  implement handle-specific query-removal notifications / safe handle
+  lifecycle, robust hardware-backed identity where available, cancellation
+  during blocking IOCTL, actual Windows 11 USB/NVMe/SATA/BitLocker testing,
+  authenticated IPC design. All four Electron physical/image inspection
+  and write flags remain false, no raw sector reads or writes, no format/UAC.
+
+
 ## CURRENT CHECKPOINT — P2-I2c-3 scan-generation primitive MERGED
 
 [PR #37](https://github.com/illetyus/Partition-11/pull/37) merged into
