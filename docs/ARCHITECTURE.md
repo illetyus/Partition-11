@@ -16,9 +16,13 @@
   filesystem engine             physical devices
 ```
 
-The Phase 0 Rust agent is a non-elevated diagnostic stub. It is not invoked
-by the Electron app, and no disk handle is opened. All displayed capability
-flags must reflect actual code, not design intention.
+The Rust agent remains a separate diagnostic executable and is not invoked
+by Electron. P2-I2a counts SetupAPI disk interfaces without opening devices;
+a P2-I2b diagnostic-only path can open agent-discovered handles with GENERIC_READ
+for bounded metadata IOCTLs when the process is non-elevated. It never reads
+raw sectors, grants no write access, and does not authorize UI inspection.
+No stable device identity is established. All displayed capability flags
+must reflect actual code, not design intention.
 
 ## Why not expose libext2fs directly to renderer?
 
