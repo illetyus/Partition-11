@@ -183,7 +183,12 @@ fn open_agent_discovered_path(path: &[u16]) -> Result<OwnedHandle, MetadataError
 
 /// Only fixed, hardcoded metadata IOCTLs are used. There is no arbitrary
 /// IOCTL code, user-provided path or sector-read API.
-fn ioctl(handle: &OwnedHandle, code: u32, input: &[u8], max_output: usize) -> Result<Vec<u8>, MetadataError> {
+fn ioctl(
+    handle: &OwnedHandle,
+    code: u32,
+    input: &[u8],
+    max_output: usize,
+) -> Result<Vec<u8>, MetadataError> {
     if max_output == 0 || max_output > MAX_DESCRIPTOR {
         return Err(MetadataError::MalformedResponse);
     }
@@ -223,7 +228,8 @@ fn dword(bytes: &[u8], offset: usize) -> Result<u32, MetadataError> {
         .get(offset..offset + 4)
         .ok_or(MetadataError::MalformedResponse)?;
     Ok(u32::from_le_bytes(
-        part.try_into().map_err(|_| MetadataError::MalformedResponse)?,
+        part.try_into()
+            .map_err(|_| MetadataError::MalformedResponse)?,
     ))
 }
 
@@ -326,8 +332,8 @@ fn query_one(path: &[u16]) -> ProbeOutcome {
     let result = (|| {
         let handle = open_agent_discovered_path(path)?;
         let before = query_device_number(&handle)?;
-        let capacity_bytes = ioctl(&handle, IOCTL_DISK_GET_LENGTH_INFO, &[], 8)
-            .and_then(|b| parse_disk_length(&b));
+        let capacity_bytes =
+            ioctl(&handle, IOCTL_DISK_GET_LENGTH_INFO, &[], 8).and_then(|b| parse_disk_length(&b));
         let sectors = ioctl(
             &handle,
             IOCTL_STORAGE_QUERY_PROPERTY,
@@ -410,7 +416,10 @@ mod tests {
         assert_eq!(classify_error(1167), MetadataError::DeviceRemoved);
         assert_eq!(classify_error(50), MetadataError::Unsupported);
         assert_eq!(classify_error(123), MetadataError::Win32(123));
-        assert_eq!(validate_number_stable(1, 2), Err(MetadataError::IdentityChanged));
+        assert_eq!(
+            validate_number_stable(1, 2),
+            Err(MetadataError::IdentityChanged)
+        );
         assert!(validate_number_stable(1, 1).is_ok());
     }
 
