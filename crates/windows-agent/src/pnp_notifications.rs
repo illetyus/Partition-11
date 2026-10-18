@@ -362,6 +362,13 @@ impl DeviceHandleNotifications {
             return Err(status);
         }
         if notification.is_null() {
+            // If Windows ever reports success without a registration handle,
+            // callbacks cannot be quiesced. Keep their context alive but
+            // detach and close the raw device handle first so we do not pin
+            // removable media indefinitely.
+            context.mark_ready();
+            state.request_close();
+            state.finish_io();
             std::mem::forget(context);
             return Err(u32::MAX);
         }
