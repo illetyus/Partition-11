@@ -1,5 +1,35 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN SON MAIN MERGE — P2-I2c-1 tarama değişikliği güvenlik denetimi
+
+- [PR #33](https://github.com/illetyus/Partition-11/pull/33), beş başarılı
+  testin ardından `main` dalına **birleştirildi**.
+  Commit: `c0da73dc94907e004907d52409d011805c7f765e`.
+- `crates/windows-agent/src/scan_identity.rs` geliştirildi. Bir tarama
+  süresince bütün disk arayüzlerinin varlığı kontrol ediliyor. Disk ekleme,
+  çıkarma veya yolun yeniden atanması; aynı yolun/numaranın tekrarlanması
+  ve 120 saniyelik tarama sınırının aşılması durumunda **taramanın tamamı
+  reddediliyor**. Yalnız agent içinde çalışıyor, ham yollar paylaşılmıyor.
+- Birleşim sonrası kontrol bağlantıları:
+  [Temel CI](https://github.com/illetyus/Partition-11/actions/runs/39133308019),
+  [Windows arayüzü](https://github.com/illetyus/Partition-11/actions/runs/39133308056),
+  [DiskSpd XML](https://github.com/illetyus/Partition-11/actions/runs/39133308116).
+  Bu koşumların son durumunu yeni oturumda **yeniden doğrula**.
+- **Sıradaki iş, hâlâ [P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31):**
+  gerçek Windows PnP aygıt/instance kimlikleri, varsa güvenilir aygıt
+  tanımlayıcıları, kısa ömürlü/iptal edilebilir agent seçimleri ve
+  USB çıkarma/yeniden takma testleri.
+- Çok hızlı çıkarıp takmada yol ve numara aynı kalabilir; mevcut tarama
+  denetimi **bunu güvenilir biçimde tespit etmez**. Güçlü kimlik/olay
+  bildirimi doğrulanmadan gerçek kullanıcı disk erişimini açma.
+- Gerçek Windows 11 fiziksel kabul testleri, BitLocker, 512e/4Kn ve
+  ARM64 kabulü yapılmadı. `inspectImages`, `inspectPhysicalDisks`,
+  `writeImages`, `writePhysicalDisks` hâlâ **false**. Disk yazma,
+  biçimlendirme, onarma, yeniden boyutlandırma, UAC ve GUI erişimi kapalı.
+
+---
+
+
 ## DEVAM EDEN İŞ — P2-I2c-1, kısa ömürlü disk taraması kontrolü
 
 - `scan_identity.rs` eklendi: bir taramanın başındaki ve sonundaki tüm
@@ -7,8 +37,8 @@
   çıkarılması, yol değişikliği, yinelenen aygıt yolu veya geçici disk
   numarası ve 120 saniyeyi aşan tarama sonucu **tamamen geçersiz** sayılır.
 - Testler deterministiktir; `metadata-summary` ham aygıt yolu vermez.
-- **Bu satır geliştirme dilimi kaydıdır; PR'ın `main` dalına birleştirilme
-  durumunu canlı GitHub üzerinden doğrula.** Daha güçlü PnP aygıt kimliği,
+- **Bu geliştirme daha sonra PR #33 ile `main` dalına birleştirildi;
+  yukarıdaki en güncel merge kaydını esas al.** Daha güçlü PnP aygıt kimliği,
   olay tabanlı iptal ve fiziksel cihaz testleri hâlâ açık.
 - Özellikle aynı yol ve numarayla çok hızlı çıkarıp takma durumu burada
   güvenilir biçimde belirlenemez; kimlik doğrulanmış sayılamaz.

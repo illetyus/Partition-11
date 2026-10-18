@@ -1,5 +1,31 @@
 # Partition 11 — Agent / future-session instructions
 
+## LATEST MERGE — P2-I2c-1 fail-closed scan inventory (2026-10-18)
+
+[PR #33](https://github.com/illetyus/Partition-11/pull/33) **merged into main**
+at `c0da73dc94907e004907d52409d011805c7f765e` after five passing PR
+checks. It adds `crates/windows-agent/src/scan_identity.rs` and enforces
+**full-scan rejection** if paths appear, disappear, duplicate, get
+reassigned, successful disk-number probes collide, or the scan exceeds
+120 seconds. Local diagnostic output is aggregate-only.
+
+The observed inventory is **not a durable device identity**: a very fast
+unplug/replug may reuse the *same path and OS disk number* undetected.
+**Next work remains P2-I2c [Issue #31](https://github.com/illetyus/Partition-11/issues/31)**:
+independent Windows PnP instance identity and reliable storage identifier
+evaluation, ephemeral authenticated per-handle generation and invalidation,
+cancel/removal tests and real Windows 11 hotplug acceptance. Do not enable
+Electron disk access, raw sector reads, writes, formatter, mount or UAC.
+
+Post-merge main checks:
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39133308019),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39133308056),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39133308116).
+**Verify the final outcomes in a new session; this is dated evidence.**
+Follow required: feature PR, 5/5 green, main merge, new main CI, update issue
+and handoff.
+
+
 ## CURRENT VERIFIED MERGE — Win32 SDK ABI oracle, PR #30 (2026-10-18)
 
 - [PR #30](https://github.com/illetyus/Partition-11/pull/30) merged to
