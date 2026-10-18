@@ -1,5 +1,22 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## DEVAM EDEN İŞ — P2-I2c-1, kısa ömürlü disk taraması kontrolü
+
+- `scan_identity.rs` eklendi: bir taramanın başındaki ve sonundaki tüm
+  Windows disk arayüzlerini karşılaştırır. Yeni disk takılması, disk
+  çıkarılması, yol değişikliği, yinelenen aygıt yolu veya geçici disk
+  numarası ve 120 saniyeyi aşan tarama sonucu **tamamen geçersiz** sayılır.
+- Testler deterministiktir; `metadata-summary` ham aygıt yolu vermez.
+- **Bu satır geliştirme dilimi kaydıdır; PR'ın `main` dalına birleştirilme
+  durumunu canlı GitHub üzerinden doğrula.** Daha güçlü PnP aygıt kimliği,
+  olay tabanlı iptal ve fiziksel cihaz testleri hâlâ açık.
+- Özellikle aynı yol ve numarayla çok hızlı çıkarıp takma durumu burada
+  güvenilir biçimde belirlenemez; kimlik doğrulanmış sayılamaz.
+- Sıradaki takip: [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
+
+---
+
+
 ## EN GÜNCEL KONTROL NOKTASI — Windows SDK ile bağımsız ABI testi `main` içinde
 
 - **[PR #30](https://github.com/illetyus/Partition-11/pull/30) merge edildi:**

@@ -6,10 +6,10 @@
 //! Even a matching temporary disk number is NOT a durable identity.
 
 use crate::disk_discovery;
+use crate::scan_identity::ScanSnapshot;
 use partition11_core::windows_layout::{
     parse_drive_layout, DriveLayout, LayoutError, ENTRY_BYTES, HEADER_BYTES, MAX_RESPONSE_BYTES,
 };
-use std::collections::HashSet;
 use std::ffi::c_void;
 use std::fmt;
 use std::ptr;
@@ -547,16 +547,25 @@ impl fmt::Display for ScanError {
 pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanError> {
     reject_elevated_process().map_err(ScanError::Security)?;
     let before = disk_discovery::enumerate_disk_interfaces().map_err(ScanError::Discovery)?;
-    let mut results: Vec<_> = before.iter().map(|p| query_one(p)).collect();
-    let after: HashSet<_> = disk_discovery::enumerate_disk_interfaces()
-        .map_err(ScanError::Discovery)?
-        .into_iter()
+    // A scan is short-lived and private to this invocation; never mint
+    // persistent disk IDs from PnP paths or temporary disk numbers.
+    let snapshot = ScanSnapshot::capture(&before)
+        .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
+    let results: Vec<_> = before.iter().map(|p| query_one(p)).collect();
+    let after = disk_discovery::enumerate_disk_interfaces().map_err(ScanError::Discovery)?;
+    let numbers: Vec<_> = results
+        .iter()
+        .filter_map(|result| match result {
+            ProbeOutcome::Ready(metadata) => Some(metadata.device_number),
+            ProbeOutcome::Unavailable(_) => None,
+        })
         .collect();
-    for (path, result) in before.iter().zip(results.iter_mut()) {
-        if !after.contains(path) {
-            *result = ProbeOutcome::Unavailable(MetadataError::DeviceRemoved);
-        }
-    }
+    // Fail the *entire* result on any PnP inventory churn, duplicate path,
+    // duplicate temporary device number, or expired scan. Reporting only the
+    // surviving entries could present a stale device as a safe selection.
+    snapshot
+        .validate(&after, &numbers)
+        .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
     Ok(results)
 }
 
