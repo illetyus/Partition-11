@@ -145,6 +145,18 @@ Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
 - P2-I2c: stable per-discovery snapshots, hotplug invalidation and agent IPC.
 - [P2-I2 parent #19](https://github.com/illetyus/Partition-11/issues/19).
 
+## P2-I2c-2 — Agent-private PnP instance cross-check
+
+[PR #35](https://github.com/illetyus/Partition-11/pull/35) merged at
+`b3d256ef` after 5/5 successful PR tests. The agent cross-checks
+`SetupDiGetDeviceInstanceIdW` values with each observed disk-interface
+path at the start/end of a non-elevated, read-only metadata scan. A
+Windows SDK C ABI oracle validates `SP_DEVINFO_DATA`. Neither the path
+nor the instance ID is a durable physical identifier. Rapid replug,
+PnP notification generation/cancellation, safe handle-to-target binding,
+and physical Windows 11 tests remain OPEN in [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
+No renderer disk access or write/elevation capabilities enabled.
+
 ## P2-I2c-1 — Bounded fail-closed scan inventory
 
 [PR #33](https://github.com/illetyus/Partition-11/pull/33) merged at
