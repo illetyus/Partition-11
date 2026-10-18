@@ -42,9 +42,7 @@ fn unique_records(
     let mut by_path = HashMap::with_capacity(records.len());
     let mut ids = HashSet::with_capacity(records.len());
     for record in records {
-        if record.path.is_empty()
-            || record.path.len() > MAX_PATH_UNITS
-            || record.path.contains(&0)
+        if record.path.is_empty() || record.path.len() > MAX_PATH_UNITS || record.path.contains(&0)
         {
             return Err(ScanIdentityError::InvalidLocator);
         }
@@ -54,7 +52,10 @@ fn unique_records(
         {
             return Err(ScanIdentityError::InvalidInstanceId);
         }
-        if by_path.insert(record.path.clone(), record.instance_id.clone()).is_some() {
+        if by_path
+            .insert(record.path.clone(), record.instance_id.clone())
+            .is_some()
+        {
             return Err(ScanIdentityError::DuplicateLocator);
         }
         // A conservative invariant for GUID_DEVINTERFACE_DISK only.
@@ -100,7 +101,12 @@ impl ScanSnapshot {
         current: &[DiskInterface],
         disk_numbers: &[u32],
     ) -> Result<(), ScanIdentityError> {
-        verify_scan(&self.original, current, disk_numbers, self.started.elapsed())
+        verify_scan(
+            &self.original,
+            current,
+            disk_numbers,
+            self.started.elapsed(),
+        )
     }
 }
 

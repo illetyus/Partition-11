@@ -551,7 +551,10 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
     // persistent disk IDs from PnP paths or temporary disk numbers.
     let snapshot = ScanSnapshot::capture(&before)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
-    let results: Vec<_> = before.iter().map(|record| query_one(&record.path)).collect();
+    let results: Vec<_> = before
+        .iter()
+        .map(|record| query_one(&record.path))
+        .collect();
     let after = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
     let numbers: Vec<_> = results
         .iter()

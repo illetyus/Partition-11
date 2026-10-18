@@ -193,9 +193,7 @@ fn get_device_instance_id(
     let mut needed = 0_u32;
     // SAFETY: DeviceInfoData is initialized to the matching C struct
     // layout and belongs to the live SetupAPI information set.
-    let ok = unsafe {
-        SetupDiGetDeviceInstanceIdW(set, info, ptr::null_mut(), 0, &mut needed)
-    };
+    let ok = unsafe { SetupDiGetDeviceInstanceIdW(set, info, ptr::null_mut(), 0, &mut needed) };
     let status = if ok == 0 {
         // SAFETY: GetLastError is sampled immediately after the failing API.
         unsafe { GetLastError() }
@@ -216,13 +214,7 @@ fn get_device_instance_id(
     // SAFETY: The buffer is allocated for 'needed' WCHARs, and Win32
     // receives the same character count, not a byte count.
     let ok = unsafe {
-        SetupDiGetDeviceInstanceIdW(
-            set,
-            info,
-            units.as_mut_ptr(),
-            needed,
-            &mut returned,
-        )
+        SetupDiGetDeviceInstanceIdW(set, info, units.as_mut_ptr(), needed, &mut returned)
     };
     if ok == 0 {
         // SAFETY: Error sampled immediately after failed Win32 call.
@@ -401,7 +393,9 @@ mod tests {
         // No disk handles are opened and no raw data is accessed.
         let devices = enumerate_disk_records().expect("SetupAPI disk interface enumeration");
         assert!(devices.len() <= MAX_DISK_INTERFACES as usize);
-        assert!(devices.iter().all(|d| !d.path.is_empty() && !d.instance_id.is_empty()));
+        assert!(devices
+            .iter()
+            .all(|d| !d.path.is_empty() && !d.instance_id.is_empty()));
         let unique: std::collections::HashSet<_> = devices.iter().map(|d| &d.path).collect();
         assert_eq!(unique.len(), devices.len());
     }
