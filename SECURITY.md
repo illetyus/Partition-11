@@ -9,7 +9,7 @@ real disks containing valuable data.
 - Phase 0: GUI scaffold, Rust policy library, status-only diagnostic stub.
 - P2: only a memory-only partition-table parser. P2.5: benchmark policy/XML
   decoder and CI-only owned scratch-file tests, not an end-user benchmark.
-- No raw disks are opened. No disk writes, mounts, repairs, or formats exist.
+- The separate Windows Rust agent may open a newly discovered disk interface with **GENERIC_READ for metadata-only IOCTLs**, but never reads raw sectors or writes disk data. It rejects elevated token execution. No UI disk access, mounts, repairs, or formats exist. See docs/P2_WINDOWS_DISK_METADATA.md.
 - Report vulnerabilities privately through GitHub's private vulnerability
   reporting feature if enabled; otherwise contact the maintainers without
   publishing device details or proof-of-concept destructive payloads.
