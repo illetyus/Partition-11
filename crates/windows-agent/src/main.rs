@@ -15,10 +15,10 @@ mod disk_discovery;
 #[allow(unsafe_code)]
 mod disk_metadata;
 #[cfg(windows)]
-mod scan_identity;
-#[cfg(windows)]
 #[allow(unsafe_code)]
 mod pnp_notifications;
+#[cfg(windows)]
+mod scan_identity;
 
 use partition11_core::PHASE_0_CAPABILITIES;
 
