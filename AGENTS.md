@@ -2,8 +2,8 @@
 
 ## CURRENT RESUME POINTER — 2026-10-18 (supersedes older snapshot below)
 
-**PR #21 P2-I2a merged** as `defe17f610aaa770cc8ffa18a4b9d9fea6c975ce` after all five PR checks passed. Full details: [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
-**Next issue: [P2-I2b #22](https://github.com/illetyus/Partition-11/issues/22)**; parent [P2-I2 #19](https://github.com/illetyus/Partition-11/issues/19) remains open. Add read-only Windows metadata/sector geometry to the agent, not real disk access via UI. **No raw writes, UAC, formatter or benchmark run enabled.** Recheck live `main` and post-merge CI before changes. Every checked PR MUST merge to main, then verify main CI and refresh this checkpoint. Historical resume bullets below remain for provenance only.
+**PR #24 P2-I2b first slice merged** to main as `3a917865f821f422dffffd04dbdf0549ef0e6ce6` (2026-10-18). Read-only Windows agent metadata diagnostic now opens non-elevated GENERIC_READ handles for hardcoded metadata IOCTLs and returns aggregate-only counts, not sectors or renderer-visible paths. Pre-merge CI, Windows UI and DiskSpd passed. See [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
+**Next issue remains [P2-I2b #22](https://github.com/illetyus/Partition-11/issues/22)** (bounded drive layout/partition metadata, stronger identity, read-only/hotplug/hardware acceptance); parent [P2-I2 #19](https://github.com/illetyus/Partition-11/issues/19) open. **No raw reads/writes, UI disk access, UAC, formatter or user benchmark.** Recheck new `main` and push CI. Merge every checked PR and verify post-merge `main` CI. Historical resume bullets below remain for provenance.
 
 **Read this file first.** The authoritative human-readable, dated checkpoint
 is [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md). Read it **in full**,
