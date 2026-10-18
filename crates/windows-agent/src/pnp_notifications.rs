@@ -236,6 +236,34 @@ mod tests {
     }
 
     #[test]
+    fn query_remove_during_registration_vetoes_without_closing_filter_handle() {
+        let generation = ScanGeneration::default();
+        let state = DeviceHandleState::for_test(0x1234);
+        let context = Box::new(DeviceHandleContext::for_test_not_ready(
+            generation.clone(),
+            state.clone(),
+        ));
+        let pointer = (&*context as *const DeviceHandleContext)
+            .cast_mut()
+            .cast::<c_void>();
+
+        assert_eq!(
+            on_device_handle_change(
+                ptr::null_mut(),
+                pointer,
+                CM_NOTIFY_ACTION_DEVICEQUERYREMOVE,
+                ptr::null(),
+                0,
+            ),
+            ERROR_CANCELLED
+        );
+        assert!(state.has_open_handle());
+        context.mark_ready();
+        state.finish_io();
+        assert!(!state.has_open_handle());
+    }
+
+    #[test]
     fn query_remove_closes_idle_handle_and_invalidates_scan() {
         let generation = ScanGeneration::default();
         let state = DeviceHandleState::for_test(0x1234);
