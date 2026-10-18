@@ -122,7 +122,7 @@ impl fmt::Display for DiscoveryError {
 /// The string starts at byte offset 4, regardless of struct padding.
 /// The returned units omit NUL; never publish them through the UI.
 fn copy_detail_path(words: &[u64], actual_bytes: usize) -> Result<Vec<u16>, DiscoveryError> {
-    if actual_bytes < 6 || actual_bytes > MAX_DETAIL_BYTES {
+    if !(6..=MAX_DETAIL_BYTES).contains(&actual_bytes) {
         return Err(DiscoveryError::UnexpectedResponse);
     }
     let capacity_bytes = words
@@ -216,7 +216,7 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
                 code: status,
             });
         }
-        if needed < 6 || needed as usize > MAX_DETAIL_BYTES {
+        if !(6..=MAX_DETAIL_BYTES).contains(&(needed as usize)) {
             return Err(DiscoveryError::UnexpectedResponse);
         }
         // Vec<u64> guarantees at least 8-byte alignment for the variable
@@ -250,7 +250,7 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
                 code: unsafe { GetLastError() },
             });
         }
-        if returned < 6 || returned > needed {
+        if !(6..=needed).contains(&returned) {
             return Err(DiscoveryError::UnexpectedResponse);
         }
         interfaces.push(copy_detail_path(&words, returned as usize)?);
