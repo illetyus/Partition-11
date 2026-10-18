@@ -552,7 +552,8 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
     // Per-invocation guard only. Future PnP notifications must share this
     // generation across concurrent scans; no event subscription exists yet.
     let generation = ScanGeneration::default();
-    let snapshot = generation.capture(&before)
+    let snapshot = generation
+        .capture(&before)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
     let results: Vec<_> = before
         .iter()
