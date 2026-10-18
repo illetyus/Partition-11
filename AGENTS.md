@@ -1,5 +1,32 @@
 # Partition 11 — Agent / future-session instructions
 
+## LATEST MERGE — P2-I2c-2 PnP instance ID pair validation (2026-10-18)
+
+**[PR #35](https://github.com/illetyus/Partition-11/pull/35) MERGED to main**
+at `b3d256ef92ebe966fb1463304195f0874725fa21` with **5/5 green PR
+checks**. The Windows agent now pairs each SetupAPI GUID_DEVINTERFACE_DISK
+locator with its `SetupDiGetDeviceInstanceIdW` value from the same live
+device-information set and checks the complete (path, instance ID) mapping
+before/after the internal metadata probe. Duplicate/invalid IDs and changed
+mapping reject the whole scan; a standalone Windows SDK C ABI check covers
+`SP_DEVINFO_DATA`. No paths or IDs are exported to the renderer.
+
+**Critical limitation:** PnP instance IDs are OS-reported devnode identifiers,
+NOT hardware-backed, immutable identities. Rapid remove/replug reusing the
+same instance ID/path remains undetected. #31 is NOT complete. Next work:
+[P2-I2c Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+PnP event notification and agent-owned generation/expiry/cancellation;
+evaluate trustworthy hardware identity only where available, then physical
+Windows 11 hotplug / device-matrix acceptance. Do not enable Electron disk
+access or disk writes, formatting, elevation, mounting or benchmark.
+
+Post-merge `main` CI started (verify final result before claiming 5/5):
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39138840885),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39138840928),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39138840905).
+Follow tested PR → main merge → fresh main CI → issue/handoff update.
+
+
 ## LATEST MERGE — P2-I2c-1 fail-closed scan inventory (2026-10-18)
 
 [PR #33](https://github.com/illetyus/Partition-11/pull/33) **merged into main**

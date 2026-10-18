@@ -1,5 +1,36 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## SON MERGE — P2-I2c-2 Windows PnP örnek kimliği doğrulaması (18.10.2026)
+
+- **[PR #35](https://github.com/illetyus/Partition-11/pull/35)**
+  beş başarılı testle **`main` dalına birleştirildi**.
+  Commit: `b3d256ef92ebe966fb1463304195f0874725fa21`.
+- `disk_discovery.rs` artık aynı SetupAPI taramasında Windows disk arayüz
+  yolu ve aygıt örneği kimliğini (`SetupDiGetDeviceInstanceIdW`) birlikte
+  okuyor. `scan_identity.rs` başlangıç ve bitişte yol→kimlik eşleşmesini
+  karşılaştırıp değişen, yinelenen, eksik bilgiyi reddediyor.
+- Bağımsız Windows SDK C doğrulaması `SP_DEVINFO_DATA` yapı boyutu ve
+  alan ofsetlerini denetliyor; gerçek Windows CI testleri başarılı.
+- **Sıradaki iş hâlâ [Issue #31](https://github.com/illetyus/Partition-11/issues/31):**
+  Windows aygıt değişimi olaylarının izlenmesi ve agent'ın geçici seçim
+  durumunun iptal edilmesi, güvenilir donanım kimliğinin incelenmesi,
+  gerçek Windows 11 USB/hotplug testleri.
+- PnP kimlikleri fiziksel aygıtın güvenilir kalıcı kimliği değildir.
+  Çok hızlı çıkar/tak ve aynı kimliğin yeniden kullanılması hâlâ risk.
+- Merge sonrası `main` test bağlantıları:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39138840885),
+  [Windows arayüzü](https://github.com/illetyus/Partition-11/actions/runs/39138840928),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39138840905).
+  Bu koşumların **nihai sonucunu canlı GitHub üzerinden kontrol et**.
+- Electron disk inceleme/yazma yetkileri false. Disk içeriği okuma,
+  fiziksel biçimlendirme, disk yazma, UAC, onarma/yeniden boyutlandırma
+  veya gerçek donanım kabulü yapılmadı.
+- Zorunlu sıra: PR 5/5 başarılı → `main` merge → yeni `main` CI →
+  Issue ve bu dosyanın güncellenmesi.
+
+---
+
+
 ## P2-I2c-2 — PnP aygıt örneği kimliği karşılaştırması (2026-10-18)
 
 - Disk keşfinde her arayüz yolunun yanında Windows'un
