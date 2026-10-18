@@ -1,5 +1,36 @@
 # Partition 11 — Agent / future-session instructions
 
+## CURRENT VERIFIED MERGE — Win32 SDK ABI oracle, PR #30 (2026-10-18)
+
+- [PR #30](https://github.com/illetyus/Partition-11/pull/30) merged to
+  `main` as `df74e420827afd8815dba764b4814664ec7fbf1c` after
+  **five passing pre-merge checks**.
+- The Windows CI now compiles and runs a standalone Microsoft C11/WinSDK
+  oracle, checking the exact field offsets/strides and fixed GET IOCTL
+  that the Rust partition-layout decoder actually uses.
+- Important SDK difference: Windows Kits `10.0.26100.0` omits the
+  `PartitionOrdinal` member described by one online reference and has
+  a different MBR union-arm size. **Neither is used by the decoder**;
+  all consumed ABI offsets and sizes passed the independent compiler test.
+- Fixed flaky test fixture filenames in `crates/core/src/image.rs`
+  using an atomic sequence and collision-safe `create_new` retries.
+- New `main` CI runs: [CI](https://github.com/illetyus/Partition-11/actions/runs/39129897257),
+  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39129897239),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39129897256).
+  **Check their current final conclusions before claiming post-merge green.**
+- **Exact next development issue:** [P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31)
+  for agent-owned, short-lived disk identity snapshots and surprise-removal/
+  replug invalidation. The previous [P2-I2b #22](https://github.com/illetyus/Partition-11/issues/22)
+  documents remaining hardware/ARM64/MBR cases.
+- No physical Windows 11 hardware acceptance, raw sector exposure,
+  authenticated renderer IPC, UAC, formatting, write, repair or resize.
+
+Always check the live GitHub `main` and open issues before resuming;
+complete work only after required checks, `main` merge, fresh `main`
+CI, and updating this handoff.
+
+
+
 ## CURRENT CHECKPOINT — P2-I2b Win32 layout read MERGED
 
 [PR #28](https://github.com/illetyus/Partition-11/pull/28) merged as

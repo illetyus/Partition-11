@@ -145,6 +145,17 @@ Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
 - P2-I2c: stable per-discovery snapshots, hotplug invalidation and agent IPC.
 - [P2-I2 parent #19](https://github.com/illetyus/Partition-11/issues/19).
 
+## Current gate after P2-I2b Windows SDK ABI validation
+
+- [PR #30](https://github.com/illetyus/Partition-11/pull/30) merged:
+  independent MSVC + Windows SDK C11 compile-time ABI checks on Windows CI,
+  including the exact parser offsets and GET-only disk-layout IOCTL;
+  Windows fixture filename collisions were also fixed.
+- [Next issue #31](https://github.com/illetyus/Partition-11/issues/31):
+  agent-private disk identity snapshots, replug/surprise-removal invalidation
+  and physical-device tests. These remain **incomplete**.
+- UI disk access, writing, formatting, mounting and elevation remain disabled.
+
 ## Continue from the latest handoff
 
 **Session-independent checkpoint:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md).
