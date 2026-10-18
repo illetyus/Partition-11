@@ -145,6 +145,18 @@ Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
 - P2-I2c: stable per-discovery snapshots, hotplug invalidation and agent IPC.
 - [P2-I2 parent #19](https://github.com/illetyus/Partition-11/issues/19).
 
+## P2-I2c-1 — Bounded fail-closed scan inventory
+
+[PR #33](https://github.com/illetyus/Partition-11/pull/33) merged at
+`c0da73dc`: present disk interface inventory before/after the entire
+metadata probe must remain unchanged, unique and within a 120-second
+scan lifetime. Duplicate/unknown temporary disk numbers fail closed.
+This is **not strong physical identity**: identical path reuse on rapid
+remove/replug is not resolved. [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+remains open for Windows PnP identity, cancel/invalidate/hotplug and
+hardware acceptance. All Electron disk access and write capabilities remain
+disabled.
+
 ## Current gate after P2-I2b Windows SDK ABI validation
 
 - [PR #30](https://github.com/illetyus/Partition-11/pull/30) merged:
