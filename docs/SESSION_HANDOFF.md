@@ -1,5 +1,34 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN GÜNCEL MERGE — PR #37 / P2-I2c-3 tarama iptal nesli (18.10.2026)
+
+- [PR #37](https://github.com/illetyus/Partition-11/pull/37)
+  **beş başarılı testten sonra `main` dalına birleştirildi.**
+  Merge commit: `fd920434101ce5b7797caced9d0c451caf86dc2e`.
+- Windows Rust Clippy denetiminin bulduğu kullanılmayan işlev hataları
+  giderildi. `crates/windows-agent/src/scan_identity.rs` artık agent'a
+  özel, atomik iptal nesli ve eski tarama sonuçlarını reddetme testleri
+  içeriyor. `disk_metadata.rs`, tarama tamamlanınca geçici nesli
+  geçersiz kılıyor. Teste özel yardımcı üretim kodundan ayrıldı.
+- **Kapsam sınırı:** Henüz Windows PnP olay bildirimi aboneliği yok.
+  Nesil tek taramaya ait; aygıtın çok hızlı çıkarılıp aynı kimlikle
+  yeniden takılması hâlâ tespit edilemeyebilir. Bu nedenle gerçek
+  donanım kimliği ve güvenli sürekli aygıt seçimi tamamlanmış değil.
+- Kod PR'ının 5/5 kontrolü başarılı. Yeni `main` doğrulaması:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39144208924),
+  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39144208918),
+  [DiskSpd XML](https://github.com/illetyus/Partition-11/actions/runs/39144208949).
+  **Bu üç koşumun nihai sonucunu canlı GitHub'dan yeniden kontrol et.**
+- **Sıradaki iş:** [Issue #31 — P2-I2c](https://github.com/illetyus/Partition-11/issues/31),
+  gerçek Windows aygıt değişim bildirimlerini paylaşılan iptal mekanizmasına
+  bağlamak, sağlam disk kimliği ve USB çıkar/tak testleri.
+- Fiziksel Windows 11 kabul testleri yapılmadı. Kullanıcı arayüzündeki
+  gerçek disk okuma, yazma, biçimlendirme, onarma, boyutlandırma ve UAC
+  kapalı. Devir dokümanı `main` üzerindeki bu commit'ten devam etmeli.
+
+---
+
+
 ## SON MERGE — P2-I2c-2 Windows PnP örnek kimliği doğrulaması (18.10.2026)
 
 - **[PR #35](https://github.com/illetyus/Partition-11/pull/35)**
