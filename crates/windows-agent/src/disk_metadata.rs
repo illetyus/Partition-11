@@ -345,7 +345,7 @@ pub(crate) enum ProbeOutcome {
 }
 
 fn next_layout_buffer_size(current: usize) -> Result<usize, MetadataError> {
-    if current < HEADER_BYTES + ENTRY_BYTES || current >= MAX_RESPONSE_BYTES {
+    if !(HEADER_BYTES + ENTRY_BYTES..MAX_RESPONSE_BYTES).contains(&current) {
         return Err(MetadataError::LayoutTooLarge);
     }
     // Doubling is mandated by the Windows driver contract, but cap the
