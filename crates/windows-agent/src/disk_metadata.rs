@@ -100,12 +100,11 @@ struct RegisteredDeviceHandle {
 
 impl RegisteredDeviceHandle {
     fn from_raw(raw_handle: Handle, generation: &ScanGeneration) -> Result<Self, MetadataError> {
-        let (state, notifications) =
-            crate::pnp_notifications::DeviceHandleNotifications::register(
-                raw_handle as usize,
-                generation,
-            )
-            .map_err(|_| MetadataError::IdentityChanged)?;
+        let (state, notifications) = crate::pnp_notifications::DeviceHandleNotifications::register(
+            raw_handle as usize,
+            generation,
+        )
+        .map_err(|_| MetadataError::IdentityChanged)?;
         Ok(Self {
             state,
             notifications: Some(notifications),
