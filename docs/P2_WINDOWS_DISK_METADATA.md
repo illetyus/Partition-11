@@ -62,3 +62,35 @@ Microsoft API references:
 - No new capabilities. `inspectImages`, `inspectPhysicalDisks`, writes and
   formatting remain disabled. Next PR: bounded IOCTL and native ABI checks,
   strict fresh-handle identity comparisons, and physical hardware QA.
+
+## P2-I2b third increment — live read-only drive-layout metadata (2026-10-18)
+
+The non-elevated, internal Rust agent now invokes the fixed
+`IOCTL_DISK_GET_DRIVE_LAYOUT_EX` (0x00070050) on its existing agent-owned
+`GENERIC_READ` handle, after capacity and a valid logical sector size have
+been independently obtained. The query does not read raw sectors or modify
+partitions. Output buffers begin with four entries and double only upon
+Windows short-buffer errors, never exceeding
+`HEADER_BYTES + ENTRY_BYTES * 128` (18,480 bytes).
+Returned bytes must be nonzero and no larger than the allocation; the pure
+`windows_layout` parser then rejects malformed counts, bounds, overlaps and
+geometry. Disks with more than 128 partitions are marked unavailable instead
+of increasing memory indefinitely.
+
+A second transient device-number query on the same handle, and a fresh
+SetupAPI enumeration after probing, still check for obvious replacement.
+**These are not durable identity or TOCTOU guarantees**. Successful layout
+data is retained only inside the agent; the non-elevated local
+`metadata-summary` command outputs aggregate `layout_known` and
+`verified_partition_count` numbers, never target paths, serial numbers
+or individual partition extents. All Electron capability flags remain false.
+
+Tests cover buffer-growth ceiling, C ABI offsets modeled in Rust, malformed
+layout response and a read-only Windows-runner metadata probe. The ABI model
+is *not* an independently compiled Windows SDK C validation; that and physical
+Windows 11 (NVMe/SATA/USB, BitLocker, 512e/4Kn, hotplug/denied devices) acceptance
+are still outstanding. Some legitimate overlapping MBR extended/logical
+layouts may deliberately fail closed until separately modeled and validated.
+
+References: https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-ioctl_disk_get_drive_layout_ex
+and https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntdddisk/ni-ntdddisk-ioctl_disk_get_drive_layout_ex.

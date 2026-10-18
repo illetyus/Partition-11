@@ -6,6 +6,9 @@
 //! Even a matching temporary disk number is NOT a durable identity.
 
 use crate::disk_discovery;
+use partition11_core::windows_layout::{
+    parse_drive_layout, DriveLayout, LayoutError, ENTRY_BYTES, HEADER_BYTES, MAX_RESPONSE_BYTES,
+};
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::fmt;
@@ -26,6 +29,14 @@ const TOKEN_ELEVATION_CLASS: u32 = 20;
 const IOCTL_STORAGE_GET_DEVICE_NUMBER: u32 = 0x002D_1080;
 const IOCTL_STORAGE_QUERY_PROPERTY: u32 = 0x002D_1400;
 const IOCTL_DISK_GET_LENGTH_INFO: u32 = 0x0007_405C;
+// winioctl.h: CTL_CODE(FILE_DEVICE_DISK, 0x14, METHOD_BUFFERED, FILE_ANY_ACCESS).
+// This is GET (metadata only), never IOCTL_DISK_SET_DRIVE_LAYOUT_EX.
+const IOCTL_DISK_GET_DRIVE_LAYOUT_EX: u32 = 0x0007_0050;
+const ERROR_BAD_LENGTH: u32 = 24;
+const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
+const ERROR_MORE_DATA: u32 = 234;
+const INITIAL_LAYOUT_SLOTS: usize = 4;
+
 const DISK_DEVICE_TYPE: u32 = 7;
 const STORAGE_DEVICE_PROPERTY: u32 = 0;
 const STORAGE_ACCESS_ALIGNMENT_PROPERTY: u32 = 6;
@@ -89,6 +100,7 @@ pub(crate) enum MetadataError {
     Unsupported,
     MalformedResponse,
     IdentityChanged,
+    LayoutTooLarge,
     Win32(u32),
 }
 
@@ -101,6 +113,7 @@ impl fmt::Display for MetadataError {
             Self::Unsupported => write!(f, "metadata query unsupported"),
             Self::MalformedResponse => write!(f, "malformed metadata response"),
             Self::IdentityChanged => write!(f, "transient device identity changed"),
+            Self::LayoutTooLarge => write!(f, "partition layout exceeds bounded reader limit"),
             Self::Win32(code) => write!(f, "Win32 error {code}"),
         }
     }
@@ -322,12 +335,137 @@ pub(crate) struct DiskMetadata {
     pub capacity_bytes: Result<u64, MetadataError>,
     pub sectors: Result<SectorSizes, MetadataError>,
     pub bus_type: Result<Option<u32>, MetadataError>,
+    pub partition_layout: Result<DriveLayout, MetadataError>,
 }
 
 #[derive(Debug)]
 pub(crate) enum ProbeOutcome {
     Ready(DiskMetadata),
     Unavailable(MetadataError),
+}
+
+fn next_layout_buffer_size(current: usize) -> Result<usize, MetadataError> {
+    if !(HEADER_BYTES + ENTRY_BYTES..MAX_RESPONSE_BYTES).contains(&current) {
+        return Err(MetadataError::LayoutTooLarge);
+    }
+    // Doubling is mandated by the Windows driver contract, but cap the
+    // allocation. A disk with >128 entries is explicitly unsupported.
+    Ok(current.saturating_mul(2).min(MAX_RESPONSE_BYTES))
+}
+
+fn map_layout_error(error: LayoutError) -> MetadataError {
+    match error {
+        LayoutError::ExcessiveCount => MetadataError::LayoutTooLarge,
+        _ => MetadataError::MalformedResponse,
+    }
+}
+
+/// Query only the agent-owned, non-elevated GENERIC_READ handle.
+/// No sector I/O, partition changes, user-provided IOCTL, or renderer API.
+fn query_drive_layout(
+    handle: &OwnedHandle,
+    capacity: u64,
+    logical_sector_size: u32,
+) -> Result<DriveLayout, MetadataError> {
+    let mut limit = HEADER_BYTES + ENTRY_BYTES * INITIAL_LAYOUT_SLOTS;
+    loop {
+        let mut bytes = vec![0_u8; limit];
+        let mut returned = 0_u32;
+        // SAFETY: Fixed metadata-only GET IOCTL and a private, initialized,
+        // bounded output allocation. Input/overlapped are null; synchronous.
+        let ok = unsafe {
+            DeviceIoControl(
+                handle.0,
+                IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
+                ptr::null(),
+                0,
+                bytes.as_mut_ptr().cast(),
+                limit as u32,
+                &mut returned,
+                ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            // SAFETY: Immediately after failed Win32 call.
+            let status = unsafe { GetLastError() };
+            if matches!(
+                status,
+                ERROR_BAD_LENGTH | ERROR_INSUFFICIENT_BUFFER | ERROR_MORE_DATA
+            ) {
+                limit = next_layout_buffer_size(limit)?;
+                continue;
+            }
+            return Err(classify_error(status));
+        }
+        if returned == 0 || returned as usize > limit {
+            return Err(MetadataError::MalformedResponse);
+        }
+        bytes.truncate(returned as usize);
+        return parse_drive_layout(&bytes, capacity, Some(logical_sector_size))
+            .map_err(map_layout_error);
+    }
+}
+
+// The offsets are intentionally mirrored from Windows' C ABI. This checks
+// Rust alignment on Windows but is NOT a substitute for a native SDK oracle.
+#[cfg(test)]
+mod layout_abi {
+    use super::*;
+    use std::mem::{offset_of, size_of};
+
+    #[repr(C)]
+    struct NativePartitionEntry {
+        style: u32,
+        start: i64,
+        length: i64,
+        number: u32,
+        rewrite: u8,
+        service: u8,
+        reserved: [u8; 2],
+        data: [u64; 14],
+    }
+
+    #[repr(C)]
+    struct NativeDriveLayout {
+        style: u32,
+        count: u32,
+        header_union: [u64; 5],
+        entry: NativePartitionEntry,
+    }
+
+    #[test]
+    fn expected_layout_and_ioctl_code_match_abi_model() {
+        assert_eq!(size_of::<NativePartitionEntry>(), ENTRY_BYTES);
+        assert_eq!(offset_of!(NativeDriveLayout, entry), HEADER_BYTES);
+        assert_eq!(size_of::<NativeDriveLayout>(), HEADER_BYTES + ENTRY_BYTES);
+        assert_eq!(IOCTL_DISK_GET_DRIVE_LAYOUT_EX, 0x0007_0050);
+    }
+
+    #[test]
+    fn growth_is_bounded_and_never_wraps() {
+        let mut size = HEADER_BYTES + ENTRY_BYTES * INITIAL_LAYOUT_SLOTS;
+        for _ in 0..10 {
+            if size == MAX_RESPONSE_BYTES {
+                break;
+            }
+            let next = next_layout_buffer_size(size).unwrap();
+            assert!(next > size && next <= MAX_RESPONSE_BYTES);
+            size = next;
+        }
+        assert_eq!(size, MAX_RESPONSE_BYTES);
+        assert_eq!(
+            next_layout_buffer_size(size),
+            Err(MetadataError::LayoutTooLarge)
+        );
+        assert_eq!(
+            next_layout_buffer_size(0),
+            Err(MetadataError::LayoutTooLarge)
+        );
+        assert_eq!(
+            map_layout_error(LayoutError::ExcessiveCount),
+            MetadataError::LayoutTooLarge
+        );
+    }
 }
 
 fn query_device_number(handle: &OwnedHandle) -> Result<u32, MetadataError> {
@@ -354,6 +492,15 @@ fn query_one(path: &[u16]) -> ProbeOutcome {
             MAX_DESCRIPTOR,
         )
         .and_then(|b| parse_bus_type(&b));
+        // Fail closed if capacity or logical-sector geometry is unavailable;
+        // otherwise ask Windows for bounded partition metadata only.
+        let partition_layout = match (&capacity_bytes, &sectors) {
+            (Ok(capacity), Ok(sizes)) => match sizes.logical {
+                Some(logical) => query_drive_layout(&handle, *capacity, logical),
+                None => Err(MetadataError::Unsupported),
+            },
+            _ => Err(MetadataError::Unsupported),
+        };
         // Detect reuse/removal on the same handle, but do NOT treat equality
         // as durable or strong device identity. P2-I2c must solve that.
         let after = query_device_number(&handle)?;
@@ -363,6 +510,7 @@ fn query_one(path: &[u16]) -> ProbeOutcome {
             capacity_bytes,
             sectors,
             bus_type,
+            partition_layout,
         })
     })();
     match result {
@@ -415,6 +563,31 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_layout_decoder_rejects_bad_buffer_and_geometry() {
+        let size = HEADER_BYTES + ENTRY_BYTES * 4;
+        let mut bytes = vec![0_u8; size];
+        bytes[..4].copy_from_slice(&0_u32.to_le_bytes()); // MBR
+        bytes[4..8].copy_from_slice(&4_u32.to_le_bytes());
+        // Four unoccupied slots: valid empty MBR metadata.
+        assert!(parse_drive_layout(&bytes, 1024 * 1024, Some(512)).is_ok());
+        bytes[4..8].copy_from_slice(&129_u32.to_le_bytes());
+        assert_eq!(
+            map_layout_error(parse_drive_layout(&bytes, 1024 * 1024, Some(512)).unwrap_err()),
+            MetadataError::LayoutTooLarge
+        );
+    }
+
+    #[test]
+    fn metadata_probe_stays_local_and_non_elevated() {
+        // Read-only metadata IOCTLs on GitHub Windows VM; no raw sectors.
+        match inspect_discovered_devices() {
+            Ok(entries) => assert!(entries.len() <= 256),
+            Err(ScanError::Security(MetadataError::ElevatedProcess)) => (),
+            Err(e) => panic!("unexpected native metadata error: {e}"),
+        }
+    }
 
     #[test]
     fn win32_denied_removed_unsupported_are_distinct() {

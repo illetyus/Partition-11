@@ -1,5 +1,14 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## YENİ ÇALIŞMA — P2-I2b üçüncü dilim: gerçek salt okunur Windows bölüm sorgusu
+
+- Geliştirme dalında `IOCTL_DISK_GET_DRIVE_LAYOUT_EX` ile sınırlı bölüm yerleşimi sorgusu, 128 bölüm üst sınırı, eksik/bozuk yanıtların reddi ve agent içinde toplam değerleri sayma uygulanıyor.
+- **Sonraki oturum PR ve `main` durumunu GitHub'dan doğrulamalı; bu belge tek başına merge/CI kanıtı değildir.**
+- GUI'de disk görüntüleme henüz etkin değil; P2-I2c sabit kimlik/hotplug, SDK C yapı doğrulaması ve gerçek donanım testleri kaldı. Fiziksel yazma, format, UAC kapalı.
+
+---
+
+
 ## EN GÜNCEL DURUM — P2-I2b bölüm yanıtı çözücü `main` içinde (2026-10-18)
 
 - **[PR #26](https://github.com/illetyus/Partition-11/pull/26) merge edildi:** `e74a9d7576b624ac05c05948055a268b3104c6ec`.
