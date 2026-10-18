@@ -36,10 +36,7 @@ fn unique_paths(paths: &[Vec<u16>]) -> Result<HashSet<Vec<u16>>, ScanIdentityErr
     }
     let mut seen = HashSet::with_capacity(paths.len());
     for path in paths {
-        if path.is_empty()
-            || path.len() > MAX_PATH_UNITS
-            || path.contains(&0)
-        {
+        if path.is_empty() || path.len() > MAX_PATH_UNITS || path.contains(&0) {
             return Err(ScanIdentityError::InvalidLocator);
         }
         if !seen.insert(path.clone()) {
@@ -84,7 +81,12 @@ impl ScanSnapshot {
         current: &[Vec<u16>],
         disk_numbers: &[u32],
     ) -> Result<(), ScanIdentityError> {
-        verify_scan(&self.original, current, disk_numbers, self.started.elapsed())
+        verify_scan(
+            &self.original,
+            current,
+            disk_numbers,
+            self.started.elapsed(),
+        )
     }
 }
 
@@ -105,10 +107,7 @@ mod tests {
         let original = baseline();
         let snapshot = ScanSnapshot::capture(&original).unwrap();
         let reversed = vec![path("pnp-disk-b"), path("pnp-disk-a")];
-        assert_eq!(
-            snapshot.validate(&reversed, &[3, 7]),
-            Ok(())
-        );
+        assert_eq!(snapshot.validate(&reversed, &[3, 7]), Ok(()));
     }
 
     #[test]
