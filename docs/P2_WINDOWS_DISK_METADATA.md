@@ -104,7 +104,8 @@ not a second hand-written Rust model, are the independent reference.
 
 Compile-time assertions check `DRIVE_LAYOUT_INFORMATION_EX` partition-entry
 offset **48**, `PARTITION_INFORMATION_EX` stride **144**, every field offset
-that the parser reads, the `PartitionOrdinal` field, GPT/MBR union layout,
+that the parser reads, GPT/MBR union offsets (but not revision-dependent
+MBR arm size or the optional `PartitionOrdinal` field),
 partition-style values, and the GET-only IOCTL identifier `0x00070050`.
 A missing SDK/compiler is a **hard CI failure**, not an optional skipped test.
 The resulting executable performs *no disk operations*.
@@ -116,3 +117,12 @@ open. The Rust parser continues rejecting untrusted or unsupported metadata;
 GUI capability flags remain disabled.
 
 Official reference: https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-partition_information_ex
+
+**SDK version finding:** The Windows runner's `winioctl.h` in SDK
+`10.0.26100.0` does **not** expose a `PartitionOrdinal` member in
+`PARTITION_INFORMATION_EX`, despite Microsoft's online reference page
+listing it. Its MBR union-arm size also differs from the earlier manually
+assumed value. Neither attribute is used by the Rust parser; the CI oracle
+therefore checks the *actual consumed offsets*, GPT arm size and overall
+entry stride against this installed SDK rather than requiring those
+incidental fields. All true layout/offset mismatches fail compilation.
