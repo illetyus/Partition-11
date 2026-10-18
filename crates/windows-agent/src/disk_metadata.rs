@@ -573,6 +573,9 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
     snapshot
         .validate(&after, &numbers)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
+    // Close this invocation's snapshot lifetime explicitly. This is NOT
+    // a PnP notification and does not protect against same-ID fast replug.
+    generation.invalidate();
     Ok(results)
 }
 
