@@ -388,7 +388,10 @@ fn query_drive_layout(
         if ok == 0 {
             // SAFETY: Immediately after failed Win32 call.
             let status = unsafe { GetLastError() };
-            if matches!(status, ERROR_BAD_LENGTH | ERROR_INSUFFICIENT_BUFFER | ERROR_MORE_DATA) {
+            if matches!(
+                status,
+                ERROR_BAD_LENGTH | ERROR_INSUFFICIENT_BUFFER | ERROR_MORE_DATA
+            ) {
                 limit = next_layout_buffer_size(limit)?;
                 continue;
             }
@@ -450,8 +453,14 @@ mod layout_abi {
             size = next;
         }
         assert_eq!(size, MAX_RESPONSE_BYTES);
-        assert_eq!(next_layout_buffer_size(size), Err(MetadataError::LayoutTooLarge));
-        assert_eq!(next_layout_buffer_size(0), Err(MetadataError::LayoutTooLarge));
+        assert_eq!(
+            next_layout_buffer_size(size),
+            Err(MetadataError::LayoutTooLarge)
+        );
+        assert_eq!(
+            next_layout_buffer_size(0),
+            Err(MetadataError::LayoutTooLarge)
+        );
         assert_eq!(
             map_layout_error(LayoutError::ExcessiveCount),
             MetadataError::LayoutTooLarge
@@ -565,9 +574,7 @@ mod tests {
         assert!(parse_drive_layout(&bytes, 1024 * 1024, Some(512)).is_ok());
         bytes[4..8].copy_from_slice(&129_u32.to_le_bytes());
         assert_eq!(
-            map_layout_error(
-                parse_drive_layout(&bytes, 1024 * 1024, Some(512)).unwrap_err()
-            ),
+            map_layout_error(parse_drive_layout(&bytes, 1024 * 1024, Some(512)).unwrap_err()),
             MetadataError::LayoutTooLarge
         );
     }
