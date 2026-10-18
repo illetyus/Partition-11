@@ -388,7 +388,11 @@ fn query_drive_layout(
             )
         };
         // SAFETY: Snapshot the error immediately, before any other Win32 call.
-        let status = if ok == 0 { unsafe { GetLastError() } } else { 0 };
+        let status = if ok == 0 {
+            unsafe { GetLastError() }
+        } else {
+            0
+        };
         epoch.ensure_current()?;
         if ok == 0 {
             if matches!(
@@ -519,8 +523,7 @@ fn query_one(path: &[u16], epoch: &ProbeEpoch<'_>) -> ProbeOutcome {
         let handle = epoch.run(|| open_agent_discovered_path(path))?;
         let before = epoch.run(|| query_device_number(&handle))?;
         let capacity_bytes = epoch.run(|| {
-            ioctl(&handle, IOCTL_DISK_GET_LENGTH_INFO, &[], 8)
-                .and_then(|b| parse_disk_length(&b))
+            ioctl(&handle, IOCTL_DISK_GET_LENGTH_INFO, &[], 8).and_then(|b| parse_disk_length(&b))
         });
         epoch.ensure_current()?;
         let sectors = epoch.run(|| {
@@ -547,9 +550,9 @@ fn query_one(path: &[u16], epoch: &ProbeEpoch<'_>) -> ProbeOutcome {
         // otherwise ask Windows for bounded partition metadata only.
         let partition_layout = match (&capacity_bytes, &sectors) {
             (Ok(capacity), Ok(sizes)) => match sizes.logical {
-                Some(logical) => epoch.run(|| {
-                    query_drive_layout(&handle, *capacity, logical, epoch)
-                }),
+                Some(logical) => {
+                    epoch.run(|| query_drive_layout(&handle, *capacity, logical, epoch))
+                }
                 None => Err(MetadataError::Unsupported),
             },
             _ => Err(MetadataError::Unsupported),
