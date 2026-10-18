@@ -226,6 +226,100 @@ mod tests {
     }
 
     #[test]
+    fn device_handle_filter_targets_exact_open_handle() {
+        let raw = 0x1234_usize;
+        let filter = device_handle_filter(raw);
+        assert_eq!(filter.cb_size, size_of::<CmNotifyFilter>() as u32);
+        assert_eq!(filter.filter_type, CM_NOTIFY_FILTER_TYPE_DEVICEHANDLE);
+        assert_eq!(filter.flags, 0);
+        assert_eq!(filter.payload[0], raw as u64);
+    }
+
+    #[test]
+    fn query_remove_closes_idle_handle_and_invalidates_scan() {
+        let generation = ScanGeneration::default();
+        let state = DeviceHandleState::for_test(0x1234);
+        let before = generation.revision();
+        let context = Box::new(DeviceHandleContext::for_test(
+            generation.clone(),
+            state.clone(),
+        ));
+        let pointer = (&*context as *const DeviceHandleContext)
+            .cast_mut()
+            .cast::<c_void>();
+
+        assert_eq!(
+            on_device_handle_change(
+                ptr::null_mut(),
+                pointer,
+                CM_NOTIFY_ACTION_DEVICEQUERYREMOVE,
+                ptr::null(),
+                0,
+            ),
+            CR_SUCCESS
+        );
+        assert_eq!(generation.revision(), before + 1);
+        assert!(!state.has_open_handle());
+    }
+
+    #[test]
+    fn busy_query_remove_is_vetoed_then_handle_closes_after_io_releases() {
+        let generation = ScanGeneration::default();
+        let state = DeviceHandleState::for_test(0x1234);
+        let lease = state.begin_io().expect("test handle lease");
+        let context = Box::new(DeviceHandleContext::for_test(
+            generation.clone(),
+            state.clone(),
+        ));
+        let pointer = (&*context as *const DeviceHandleContext)
+            .cast_mut()
+            .cast::<c_void>();
+
+        assert_eq!(
+            on_device_handle_change(
+                ptr::null_mut(),
+                pointer,
+                CM_NOTIFY_ACTION_DEVICEQUERYREMOVE,
+                ptr::null(),
+                0,
+            ),
+            ERROR_CANCELLED
+        );
+        assert!(state.has_open_handle());
+        drop(lease);
+        state.finish_io();
+        assert!(!state.has_open_handle());
+    }
+
+    #[test]
+    fn query_remove_failed_never_resurrects_stale_handle_in_same_scan() {
+        let generation = ScanGeneration::default();
+        let state = DeviceHandleState::for_test(0x1234);
+        state.request_close();
+        state.finish_io();
+        assert!(!state.has_open_handle());
+
+        let context = Box::new(DeviceHandleContext::for_test(
+            generation.clone(),
+            state.clone(),
+        ));
+        let pointer = (&*context as *const DeviceHandleContext)
+            .cast_mut()
+            .cast::<c_void>();
+        assert_eq!(
+            on_device_handle_change(
+                ptr::null_mut(),
+                pointer,
+                CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED,
+                ptr::null(),
+                0,
+            ),
+            CR_SUCCESS
+        );
+        assert!(!state.has_open_handle());
+    }
+
+    #[test]
     fn can_subscribe_and_unsubscribe_on_hosted_windows_without_disk_io() {
         // Hosted CI Windows Server is not a real Windows 11 USB hotplug test.
         let generation = ScanGeneration::default();
