@@ -64,7 +64,6 @@ fn disk_filter() -> CmNotifyFilter {
     filter
 }
 
-
 fn device_handle_filter(raw_handle: usize) -> CmNotifyFilter {
     let mut filter = CmNotifyFilter {
         cb_size: size_of::<CmNotifyFilter>() as u32,
@@ -275,7 +274,6 @@ extern "system" fn on_disk_change(
     }
     CR_SUCCESS
 }
-
 
 extern "system" fn on_device_handle_change(
     _notification: *mut c_void,
