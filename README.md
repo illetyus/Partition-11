@@ -2,7 +2,7 @@
 
 Modern, Windows 11–oriented ext2/ext3/ext4 disk management desktop application.
 
-**Status (2026-10-18):** P0 foundation and CI hardening are implemented; P1 Windows 11 UI exists in source, pending physical-device and mixed-DPI verification. P2 includes a memory-only GPT/MBR parser and an **internal bounded read-only regular image-file reader**, neither exposed through the app/agent. **No production image/physical-disk inspection, benchmark execution, disk writes, formatting, repair, or resize is enabled.**
+**Status (2026-10-18):** P0/P1 foundation and preview UI plus P2 GPT/MBR parser, bounded internal image reader and native **SetupAPI-only disk-interface discovery** (P2-I2a / PR #21) exist. The local Windows agent `discovery-count` only reports the number of present interfaces without opening disks. **No user-facing disk scan, live benchmark, physical reads/writes, formatting, repair or resize is enabled.** Next: [P2-I2b #22](https://github.com/illetyus/Partition-11/issues/22).
 
 Architecture: Electron + React + TypeScript + Fluent UI (desktop shell), isolated Rust core (operation policies and future filesystem adapters), Windows privileged agent (future; explicitly disabled). Linux/WSL is not a runtime prerequisite.
 

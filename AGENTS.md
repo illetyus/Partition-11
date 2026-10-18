@@ -1,5 +1,10 @@
 # Partition 11 — Agent / future-session instructions
 
+## CURRENT RESUME POINTER — 2026-10-18 (supersedes older snapshot below)
+
+**PR #21 P2-I2a merged** as `defe17f610aaa770cc8ffa18a4b9d9fea6c975ce` after all five PR checks passed. Full details: [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
+**Next issue: [P2-I2b #22](https://github.com/illetyus/Partition-11/issues/22)**; parent [P2-I2 #19](https://github.com/illetyus/Partition-11/issues/19) remains open. Add read-only Windows metadata/sector geometry to the agent, not real disk access via UI. **No raw writes, UAC, formatter or benchmark run enabled.** Recheck live `main` and post-merge CI before changes. Every checked PR MUST merge to main, then verify main CI and refresh this checkpoint. Historical resume bullets below remain for provenance only.
+
 **Read this file first.** The authoritative human-readable, dated checkpoint
 is [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md). Read it **in full**,
 then [docs/PLAN.md](docs/PLAN.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
