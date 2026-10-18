@@ -1,5 +1,23 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## NEW CHECKPOINT — Windows SDK C ABI oracle (2026-10-18)
+
+- A new CI-only MSVC + Windows SDK C11 oracle validates native sizes and
+  offsets used by the bounded Rust drive-layout parser, while permitting
+  SDK revision differences in unused ordinal/MBR-arm details. Source:
+  `tests/windows/drive_layout_abi.c`; runner script:
+  `scripts/check-windows-sdk-abi.ps1`; hook in `.github/workflows/ci.yml`.
+- **This checkpoint is source-work until GitHub PR / merge / post-merge CI
+  are independently confirmed.** Check live repository state first.
+- This *does not* make raw disk operations accessible to Electron and does
+  not solve device identity or hotplug / physical Windows 11 acceptance.
+  **Next P2-I2c work:** trustworthy short-lived identity snapshots and
+  invalidate-on-surprise-removal / replug; independent hardware QA remains open.
+- All format / repair / resize / UAC / write capabilities remain disabled.
+
+---
+
+
 ## EN SON MERGE — P2-I2b canlı salt okunur Windows bölüm sorgusu (2026-10-18)
 
 **[PR #28](https://github.com/illetyus/Partition-11/pull/28) 5/5 test geçerek `main`e birleştirildi:** `7cda163816a5994cf894ff3ff48c488df77fb5a4`.

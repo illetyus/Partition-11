@@ -94,3 +94,35 @@ layouts may deliberately fail closed until separately modeled and validated.
 
 References: https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-ioctl_disk_get_drive_layout_ex
 and https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntdddisk/ni-ntdddisk-ioctl_disk_get_drive_layout_ex.
+
+## Independent Windows SDK ABI conformance gate (2026-10-18)
+
+A Windows-only CI step now **compiles and executes a separate C11 source**
+(`tests/windows/drive_layout_abi.c`) with the *installed Microsoft Windows
+SDK* and MSVC via `scripts/check-windows-sdk-abi.ps1`. The SDK headers,
+not a second hand-written Rust model, are the independent reference.
+
+Compile-time assertions check `DRIVE_LAYOUT_INFORMATION_EX` partition-entry
+offset **48**, `PARTITION_INFORMATION_EX` stride **144**, every field offset
+that the parser reads, GPT/MBR union offsets (but not revision-dependent
+MBR arm size or the optional `PartitionOrdinal` field),
+partition-style values, and the GET-only IOCTL identifier `0x00070050`.
+A missing SDK/compiler is a **hard CI failure**, not an optional skipped test.
+The resulting executable performs *no disk operations*.
+
+This verifies native x64 ABI **on the GitHub Windows runner**. ARM64 ABI,
+actual hardware/driver behavior, hotplug, response validity under real
+corruption, Windows 11 physical acceptance and strong device identity remain
+open. The Rust parser continues rejecting untrusted or unsupported metadata;
+GUI capability flags remain disabled.
+
+Official reference: https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-partition_information_ex
+
+**SDK version finding:** The Windows runner's `winioctl.h` in SDK
+`10.0.26100.0` does **not** expose a `PartitionOrdinal` member in
+`PARTITION_INFORMATION_EX`, despite Microsoft's online reference page
+listing it. Its MBR union-arm size also differs from the earlier manually
+assumed value. Neither attribute is used by the Rust parser; the CI oracle
+therefore checks the *actual consumed offsets*, GPT arm size and overall
+entry stride against this installed SDK rather than requiring those
+incidental fields. All true layout/offset mismatches fail compilation.
