@@ -130,7 +130,9 @@ Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
   **merged** via [PR #24](https://github.com/illetyus/Partition-11/pull/24)
   (`3a917865`): temporary device number, capacity, logical/physical sector
   sizes and bus type, fail-closed elevation policy, Win32 errors and tests.
-  This is NOT a stable identity or UI disk scan. Drive/partition layout,
+  This is NOT a stable identity or UI disk scan. A separate P2-I2b pure
+  bounded Win32 drive-layout parser has been added (no live IOCTL yet);
+  drive/partition layout querying,
   further native denial/hotplug tests and physical Windows 11 acceptance
   remain open under [#22](https://github.com/illetyus/Partition-11/issues/22).
   See [metadata design](P2_WINDOWS_DISK_METADATA.md).

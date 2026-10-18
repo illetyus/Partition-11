@@ -44,3 +44,21 @@ Microsoft API references:
 - https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_access_alignment_descriptor
 - https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_device_descriptor
 - https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation
+
+## P2-I2b drive-layout parser, second increment (2026-10-18)
+
+- New **pure** `crates/core/src/windows_layout.rs` parses a bounded x64/ARM64
+  `DRIVE_LAYOUT_INFORMATION_EX` metadata buffer. Maximum 128 partition slots,
+  48-byte header and 144-byte Windows layout entry; no disk I/O or UI wiring.
+- Validates MBR/GPT/RAW style, declared count and exact bounded spans, disk
+  capacity, available logical sector alignment, nonzero occupied ranges,
+  distinct partition numbers and overlapping extents. Empty MBR slots are
+  ignored and sorting is by byte offset.
+- Synthetic tests cover GPT/MBR, empty RAW, malformed/truncated counts,
+  overlaps, duplicate numbers, negative/wrapped/out-of-bounds positions and
+  sector misalignment. Native Windows SDK ABI conformance and genuine device
+  layout queries remain **future work**: this parser is not yet fed by a live
+  `DeviceIoControl` call.
+- No new capabilities. `inspectImages`, `inspectPhysicalDisks`, writes and
+  formatting remain disabled. Next PR: bounded IOCTL and native ABI checks,
+  strict fresh-handle identity comparisons, and physical hardware QA.

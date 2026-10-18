@@ -1,5 +1,24 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## Güncel uygulama dilimi — P2-I2b bölüm yerleşimi çözümleyicisi (2026-10-18)
+
+- Devir kaydı okunurken canlı `main` SHA ve CI yeniden doğrulanmalıdır.
+- P2-I2b için Rust çekirdeğine saf, **disk açmayan** `windows_layout`
+  çözümleyicisi eklendi. Windows GPT/MBR/RAW bölüm bilgi yanıtlarını sınırlı
+  uzunluklarda doğrular. Bu **canlı IOCTL entegrasyonu değildir**.
+- Yöntem ve testler: `crates/core/src/windows_layout.rs`; teknik bağlam:
+  `docs/P2_WINDOWS_DISK_METADATA.md`.
+- **Sıradaki iş:** [Issue #22](https://github.com/illetyus/Partition-11/issues/22)
+  uyarınca Windows `IOCTL_DISK_GET_DRIVE_LAYOUT_EX` çağrısını yalnızca
+  agent'ın kendi salt okunur cihaz tanıtıcısından, sınırlandırılmış çıktı ve
+  kimlik yeniden denetimiyle elde etmek. Derleme/SDK ABI, gerçek Windows
+  cihazları, hotplug ve erişim reddi testleri hâlâ gereklidir.
+- Önce PR kontrolleri, ardından `main` merge, sonra yeni `main` CI kontrolü.
+  Yetki bayrakları false kalacak; fiziksel disk yazma/format yapılmayacak.
+
+---
+
+
 
 ## EN YENİ DEVAM NOKTASI — P2-I2b ilk dilim (18 Ekim 2026)
 
