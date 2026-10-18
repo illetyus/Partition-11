@@ -1,5 +1,42 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN GÜNCEL KONTROL NOKTASI — Windows SDK ile bağımsız ABI testi `main` içinde
+
+- **[PR #30](https://github.com/illetyus/Partition-11/pull/30) merge edildi:**
+  `df74e420827afd8815dba764b4814664ec7fbf1c`.
+  PR üzerinde **5/5 kontrol başarılı**.
+- Microsoft Windows SDK ve C derleyicisiyle bağımsız dosya:
+  `tests/windows/drive_layout_abi.c`; çalıştırma betiği
+  `scripts/check-windows-sdk-abi.ps1`; zorunlu CI adımı
+  `.github/workflows/ci.yml` içinde.
+- Test `PARTITION_INFORMATION_EX` ve `DRIVE_LAYOUT_INFORMATION_EX`
+  içindeki Rust tarafından **gerçekten kullanılan** bayt konumları,
+  GPT/MBR union başlangıcı, 48 bayt başlık, 144 bayt giriş, salt okunur
+  `IOCTL_DISK_GET_DRIVE_LAYOUT_EX` kodunu doğruladı.
+- Windows SDK `10.0.26100.0` çevrimiçi belgede geçen
+  `PartitionOrdinal` alanını sunmuyor ve MBR alt yapı boyutu farklı;
+  bunlar uygulamada okunmadığından yanlış bir uyumluluk şartına
+  dönüştürülmedi. Gerçek kullanılan alanlar doğrulandı.
+- Windows'ta paralel birim testlerinde aynı geçici dosya adının
+  kullanılmasına yol açan hata da giderildi.
+- **Birleşim sonrası yeni `main` kontrollerini mutlaka sorgula:**
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39129897257),
+  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39129897239),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39129897256).
+- **Sıradaki iş [P2-I2c — Issue #31](https://github.com/illetyus/Partition-11/issues/31):**
+  agent tarafında güvenilir, kısa ömürlü disk kimlik anlık görüntüleri,
+  USB çıkarma/yeniden takma, disk numarası/yolun yeniden atanması,
+  erişim reddi ve iptal kontrolleri. [#22](https://github.com/illetyus/Partition-11/issues/22)
+  diğer kabul maddeleri için açık kalıyor.
+- Electron disk yetenekleri hâlâ `false`. Gerçek fiziksel Windows 11
+  cihaz testleri, ARM64 SDK uyumu ve hotplug kabulü yapılmadı;
+  fiziksel disk yazma, formatlama, onarma, boyutlandırma ve UAC kapalı.
+- **Ana kural:** her küçük PR → 5 yeşil test → `main` merge →
+  yeni `main` CI teyidi → Issue ve bu belgeyi güncelle.
+
+---
+
+
 ## NEW CHECKPOINT — Windows SDK C ABI oracle (2026-10-18)
 
 - A new CI-only MSVC + Windows SDK C11 oracle validates native sizes and
@@ -7,8 +44,8 @@
   SDK revision differences in unused ordinal/MBR-arm details. Source:
   `tests/windows/drive_layout_abi.c`; runner script:
   `scripts/check-windows-sdk-abi.ps1`; hook in `.github/workflows/ci.yml`.
-- **This checkpoint is source-work until GitHub PR / merge / post-merge CI
-  are independently confirmed.** Check live repository state first.
+- **This checkpoint was later merged via PR #30; the newer section above
+  identifies its actual main SHA.** Check live repository state first.
 - This *does not* make raw disk operations accessible to Electron and does
   not solve device identity or hotplug / physical Windows 11 acceptance.
   **Next P2-I2c work:** trustworthy short-lived identity snapshots and
