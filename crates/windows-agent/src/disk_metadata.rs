@@ -259,8 +259,9 @@ fn parse_disk_length(bytes: &[u8]) -> Result<u64, MetadataError> {
     Ok(length as u64)
 }
 
-fn property_input(property: u32) -> [u8; 8] {
-    let mut input = [0_u8; 8];
+fn property_input(property: u32) -> [u8; 12] {
+    // STORAGE_PROPERTY_QUERY includes AdditionalParameters[1], plus C padding.
+    let mut input = [0_u8; 12];
     input[..4].copy_from_slice(&property.to_le_bytes());
     input[4..8].copy_from_slice(&PROPERTY_STANDARD_QUERY.to_le_bytes());
     input
@@ -269,7 +270,7 @@ fn property_input(property: u32) -> [u8; 8] {
 fn descriptor_header(bytes: &[u8], minimum: usize) -> Result<(), MetadataError> {
     let version = dword(bytes, 0)? as usize;
     let declared = dword(bytes, 4)? as usize;
-    if bytes.len() < minimum || version < minimum || declared < minimum || declared > bytes.len() {
+    if bytes.len() < minimum || version < minimum || declared < minimum || declared > bytes.len() || version > declared {
         return Err(MetadataError::MalformedResponse);
     }
     Ok(())
