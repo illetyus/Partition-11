@@ -10,9 +10,9 @@
 
 use crate::disk_discovery::DiskInterface;
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 const MAX_INTERFACES: usize = 256;
 const MAX_PATH_UNITS: usize = 16 * 1024;
@@ -48,7 +48,10 @@ impl ScanGeneration {
         self.0.fetch_add(1, Ordering::AcqRel);
     }
 
-    pub(crate) fn capture(&self, records: &[DiskInterface]) -> Result<ScanSnapshot, ScanIdentityError> {
+    pub(crate) fn capture(
+        &self,
+        records: &[DiskInterface],
+    ) -> Result<ScanSnapshot, ScanIdentityError> {
         Ok(ScanSnapshot {
             original: unique_records(records)?,
             started: Instant::now(),
@@ -57,7 +60,6 @@ impl ScanGeneration {
         })
     }
 }
-
 
 fn unique_records(
     records: &[DiskInterface],
@@ -162,7 +164,10 @@ mod tests {
         let snap = guard.capture(&records).unwrap();
         assert_eq!(snap.validate(&records, &[3, 7]), Ok(()));
         guard.invalidate();
-        assert_eq!(snap.validate(&records, &[3, 7]), Err(ScanIdentityError::Cancelled));
+        assert_eq!(
+            snap.validate(&records, &[3, 7]),
+            Err(ScanIdentityError::Cancelled)
+        );
         let fresh = guard.capture(&records).unwrap();
         assert_eq!(fresh.validate(&records, &[3, 7]), Ok(()));
     }
