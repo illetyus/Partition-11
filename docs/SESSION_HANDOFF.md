@@ -192,6 +192,27 @@ disk işlemlerini hiçbir zaman bu belgeden hareketle açma.
   [P0_REPRODUCIBLE_BUILDS.md](P0_REPRODUCIBLE_BUILDS.md),
   [LICENSES.md](LICENSES.md).
 
+## 7A. P2-I2a — 18 Ekim 2026 devam çalışması
+
+Bu oturumda Windows SetupAPI `GUID_DEVINTERFACE_DISK` kullanarak **mevcut disk
+arayüzlerinin salt okunur tespiti** için Rust agent kodu hazırlanmıştır.
+`crates/windows-agent/src/disk_discovery.rs` dosyasında yalnızca
+`SetupDiGetClassDevsW`, `SetupDiEnumDeviceInterfaces`,
+`SetupDiGetDeviceInterfaceDetailW`, `SetupDiDestroyDeviceInfoList`
+ve hata okumak için `GetLastError` kullanılır.
+
+- Her aygıtla ilgili FFI bellek boyutları ve hata sonuçları sınırlandırılır.
+- Yerel tanılama komutu `partition11-agent discovery-count` yalnızca kaç
+  fiziksel disk arayüzü bulunduğunu döndürür; kullanıcıya ham yollar verilmez.
+- **Disk açma, diske okuma/yazma, bölüm tablosu analizi, kimlik doğrulama,
+  UAC, IPC veya GUI bağlantısı bu dilimde yok.**
+- Bu dilimin birleştirilme/test durumu en güncel GitHub `main` ve PR kayıtları
+  üzerinden doğrulanmalıdır; belge içindeki tarihî SHA güvenilir güncel durum
+  yerine geçmez.
+- **Sonraki teknik dilim P2-I2b:** Windows disk meta verisi sorgularını
+  sıfır-yazma erişimiyle ve güvenli kimlik kontrolleriyle eklemek.
+- Ebeveyn iş kaydı: [Issue #19](https://github.com/illetyus/Partition-11/issues/19).
+
 ## 8. Yeni sohbetten devam etmek için hazır talimat
 
 Aşağıdaki metni yeni ChatGPT/Codex oturumuna ver:

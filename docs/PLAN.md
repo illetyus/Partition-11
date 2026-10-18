@@ -69,11 +69,12 @@ only after an explicit architecture decision and license review.
 - **P1**: Approved Windows 11-style mock UI and real-Electron CI screenshot
   tests are present. Packaged Windows 11 desktop testing, physical mixed-DPI,
   Narrator and high-contrast acceptance are NOT complete.
-- **P2**: A bounded, memory-only GPT/MBR parser and **internal**, ordinary-file,
-  bounded, read-only image reader (PR #17) exist. Neither is wired to the app
-  or agent. Real Win32 disk discovery, stable device identity, end-to-end
-  authenticated image access, ext superblock inspection, and physical-device
-  acceptance are NOT implemented.
+- **P2**: Bounded, memory-only GPT/MBR parser and **internal** read-only image
+  reader (#17) exist. P2-I2a adds SetupAPI-only discovery of present Windows
+  disk **interfaces**, with bounded Win32 FFI and a local diagnostic count;
+  it does NOT open disk handles, inspect sectors, query capacity/partitions,
+  provide stable device identity or connect to Electron. End-to-end read-only
+  discovery (P2-I2b onward) and physical acceptance remain NOT implemented.
 - **P2.5A / P2.5B.1**: Four mock-only benchmark profiles, a strict XML result
   parser, genuine pinned DiskSpd **read-only CI** smoke test, fixed workload
   planner, and exact-owned scratch-file tests exist. No user-facing benchmark
@@ -119,6 +120,17 @@ only after an explicit architecture decision and license review.
 Every increment: separate PR, tests on Windows/Linux where relevant,
 explicit capability checks, docs/ADR updates, and no physical writes before P5.
 Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
+
+## P2-I2 current implementation split
+
+- P2-I2a: native SetupAPI GUID_DEVINTERFACE_DISK discovery with an internal,
+  bounded list of Windows interface paths. Diagnostic `discovery-count`
+  prints the count only; all UI capabilities stay false. No device opens.
+- P2-I2b: retrieve independently validated read-only device number, capacity,
+  logical/physical sector geometry and partition layout with explicit Win32
+  error handling and no renderer-controlled device paths.
+- P2-I2c: stable per-discovery snapshots, hotplug invalidation and agent IPC.
+- [P2-I2 parent #19](https://github.com/illetyus/Partition-11/issues/19).
 
 ## Continue from the latest handoff
 
