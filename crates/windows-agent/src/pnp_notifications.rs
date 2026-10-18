@@ -27,7 +27,11 @@ struct CmNotifyFilter {
 }
 
 const CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE: u32 = 0;
+// The callback invalidates on *all* actions, including unknown actions.
+// Numeric action labels are used only in deterministic tests.
+#[cfg(test)]
 const CM_NOTIFY_ACTION_DEVICEINTERFACEARRIVAL: u32 = 0;
+#[cfg(test)]
 const CM_NOTIFY_ACTION_DEVICEINTERFACEREMOVAL: u32 = 1;
 const CR_SUCCESS: u32 = 0;
 
