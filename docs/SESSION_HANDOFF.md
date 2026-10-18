@@ -1,5 +1,43 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN SON MERGE — P2-I2b canlı salt okunur Windows bölüm sorgusu (2026-10-18)
+
+**[PR #28](https://github.com/illetyus/Partition-11/pull/28) 5/5 test geçerek `main`e birleştirildi:** `7cda163816a5994cf894ff3ff48c488df77fb5a4`.
+
+- Rust agent'ın yalnız kendi keşfettiği, **yükseltilmemiş** ve
+  `GENERIC_READ` ile açtığı aygıt tanıtıcısında sabit
+  `IOCTL_DISK_GET_DRIVE_LAYOUT_EX` (0x00070050) çağrılıyor.
+  Yanıt 4 bölüm yerinden başlayarak ancak kısa-tampon hatasında büyütülür;
+  **128 bölüm / 18.480 bayt** üst sınırı aşılmaz. Kapasite ve mantıksal
+  sektör boyutu doğrulanmamışsa bölüm sorgusu reddedilir.
+- Yanıt, `crates/core/src/windows_layout.rs` saf doğrulayıcısından geçer;
+  `crates/windows-agent/src/disk_metadata.rs` içindeki sonuçlar sadece
+  agent içinde tutulur. `metadata-summary` yalnız toplam değerleri
+  raporlar; ham disk yolu, bölüm konumu veya seri bilgileri dışarı verilmez.
+- GUI ile agent hâlâ bağlı değil; `inspectImages`,
+  `inspectPhysicalDisks`, `writeImages`, `writePhysicalDisks`
+  **false**. Ham sektör okuma, fiziksel yazma, format, UAC ve kullanıcı
+  benchmark'ı uygulanmadı.
+- PR #28 kontrolleri 5/5 başarılı. Merge sonrası `main` kanıtları:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39127620884),
+  [Windows arayüzü](https://github.com/illetyus/Partition-11/actions/runs/39127620957),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39127621005).
+  Yeni oturum bu koşumların **nihai durumunu tekrar doğrulamalıdır**.
+- **Tam devam noktası:** [#22](https://github.com/illetyus/Partition-11/issues/22)
+  (üst [#19](https://github.com/illetyus/Partition-11/issues/19)).
+  Windows SDK'daki gerçek C yapı boyutu ve alan offsetlerini bağımsız
+  doğrula; sürpriz disk çıkarılması, erişim reddi, geçici disk numarası
+  veya PnP yolunun yeniden kullanılması riskleri için agent tarafında
+  güvenilir kısa ömürlü kimlik ve iptal akışı kur. GPT/MBR gerçek
+  donanım, BitLocker ve 512e/4Kn kabulü hâlâ yapılmadı.
+- Zorunlu sıralama: canlı `main` → küçük kod + test PR'si → 5/5 yeşil
+  kontroller → **`main` merge** → yeni `main` CI → Issue ve devir
+  belgesi güncelleme. Eski tarihî başlıklar artık bu paragrafın
+  altındadır ve güncel durum yerine geçmez.
+
+---
+
+
 ## YENİ ÇALIŞMA — P2-I2b üçüncü dilim: gerçek salt okunur Windows bölüm sorgusu
 
 - Geliştirme dalında `IOCTL_DISK_GET_DRIVE_LAYOUT_EX` ile sınırlı bölüm yerleşimi sorgusu, 128 bölüm üst sınırı, eksik/bozuk yanıtların reddi ve agent içinde toplam değerleri sayma uygulanıyor.
