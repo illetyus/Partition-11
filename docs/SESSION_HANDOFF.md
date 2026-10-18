@@ -1,5 +1,41 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN YENİ DEVAM NOKTASI — P2-I2c sorgu koruması (19 Ekim 2026)
+
+**[PR #41](https://github.com/illetyus/Partition-11/pull/41) main'e birleşti:**
+`6b9f293dea427f598fdc35ed355d9d39f5d6d3dd`.
+PR'deki 5 kontrol başarılıydı. Önce `ProbeEpoch` bulunamadığı için
+Windows testini bilerek başarısız kıldık; sonra gerçek metadata sorgu
+yolunu testlerle korumaya aldık.
+
+Artık `crates/windows-agent/src/disk_metadata.rs`, PnP disk değişikliği
+geldiğinde **her yeni sorgu öncesi ve her cevap sonrası** atomik nesli
+denetliyor. Yeniden denenen bölüm yerleşimi sorgularında da aynı kontrol var.
+İptal olmuş tarama yeni Win32 sorgusu başlatmıyor; aldığı bilgiyi reddediyor.
+Yeni güvenlik tasarımı: [P2_I2C_QUERY_EPOCH.md](P2_I2C_QUERY_EPOCH.md).
+
+**Henüz bitmedi:** Windows sürücüsünde kilitlenen senkron `DeviceIoControl`
+çağrısını zorla kesme; açık HANDLE için query-remove bildirimiyle güvenli
+tanıtıcı kapatma/yeniden açma; gerçek donanım kimliği; USB hızlı çıkar/tak;
+fiziksel Windows 11 NVMe/SATA/BitLocker/512e/4Kn kabul testleri ve Electron'a
+kimlik doğrulamalı salt okunur agent bağlantısı. Kullanıcı arayüzündeki
+disk okuma/yazma, UAC, biçimlendirme ve benchmark işlevleri kapalı.
+
+**Sıradaki kesin hedef:** [P2-I2c Issue #31](https://github.com/illetyus/Partition-11/issues/31),
+HANDLE'a özel kaldırma bildirimleri ve eşzamanlı disk sorgusu yaşam döngüsünü
+önce Microsoft API kurallarına göre tasarla ve test et; ardından bağımsız
+geliştirme PR'si. Bu fazı tamamlandı olarak kapatma.
+
+Yeni `main` kontrol bağlantıları: [CI](https://github.com/illetyus/Partition-11/actions/runs/39176273055),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39176273089),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39176273046).
+**Bu belge hazırlanırken sonuçlar henüz kesin değildi; tamamlanınca doğrula.**
+Zorunlu protokol: küçük PR → 5/5 CI → `main` squash merge → yeni `main`
+CI → Issue ve handoff güncellemesi. Çıplak disk yazma yok.
+
+---
+
+
 ## EN GÜNCEL MAIN MERGE — Windows PnP disk olay aboneliği (18.10.2026)
 
 - [PR #39](https://github.com/illetyus/Partition-11/pull/39), **5/5 PR

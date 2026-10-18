@@ -1,5 +1,16 @@
 # Partition 11 — Agent / future-session instructions
 
+## LATEST MERGED DEVELOPMENT — P2-I2c metadata query epoch (2026-10-19)
+
+- [PR #41](https://github.com/illetyus/Partition-11/pull/41) merged as `6b9f293dea427f598fdc35ed355d9d39f5d6d3dd`, after 5/5 successful PR checks. Tests were written first and failed as expected (missing `ProbeEpoch`), then Windows/Linux Rust and Electron/Windows UI/DiskSpd passed.
+- The Rust agent now checks a single PnP `ScanGeneration` epoch **before and after every synchronous metadata query** and each partition-layout retry. On cancellation it drops results and starts no further Win32 metadata requests. It still **cannot forcibly terminate a blocking synchronous IOCTL**.
+- Scope and Microsoft device removal semantics: [docs/P2_I2C_QUERY_EPOCH.md](docs/P2_I2C_QUERY_EPOCH.md). No per-device HANDLE query-remove callback, durable hardware identity, authenticated agent IPC, physical Win11 tests or GUI disk access is implemented.
+- [Issue #31](https://github.com/illetyus/Partition-11/issues/31) remains OPEN: next design/review handle-specific removal notifications with safe handle+in-flight I/O lifetime; assess hardware-backed identifiers and test physical USB/NVMe/SATA/512e/4Kn/BitLocker.
+- Post-merge `main` CI: [CI](https://github.com/illetyus/Partition-11/actions/runs/39176273055), [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39176273089), [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39176273046). **Verify final conclusions before claiming post-merge success.** All inspection and write capability flags remain false.
+
+---
+
+
 ## NEWEST VERIFIED CODE MERGE — Windows PnP scan invalidation (2026-10-18)
 
 - [PR #39](https://github.com/illetyus/Partition-11/pull/39) **merged into
