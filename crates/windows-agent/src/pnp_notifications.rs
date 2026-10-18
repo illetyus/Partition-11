@@ -92,7 +92,9 @@ pub(crate) struct DiskNotifications {
 impl DiskNotifications {
     pub(crate) fn register(generation: &ScanGeneration) -> Result<Self, u32> {
         let context = Box::new(generation.clone());
-        let context_ptr = (&*context as *const ScanGeneration).cast_mut().cast::<c_void>();
+        let context_ptr = (&*context as *const ScanGeneration)
+            .cast_mut()
+            .cast::<c_void>();
         let mut notification = ptr::null_mut();
         let filter = disk_filter();
         // SAFETY: The SDK filter size/offsets are checked independently in C;
@@ -171,7 +173,9 @@ mod tests {
         let snapshot = generation.capture(&records).unwrap();
         assert_eq!(snapshot.validate(&records, &[1]), Ok(()));
         let context = Box::new(generation.clone());
-        let pointer = (&*context as *const ScanGeneration).cast_mut().cast::<c_void>();
+        let pointer = (&*context as *const ScanGeneration)
+            .cast_mut()
+            .cast::<c_void>();
         assert_eq!(
             on_disk_change(
                 ptr::null_mut(),
@@ -210,7 +214,10 @@ mod tests {
         assert_eq!(filter.cb_size, 416);
         assert_eq!(filter.filter_type, 0);
         assert_eq!(filter.flags, 0);
-        assert_eq!(filter.payload[0].to_le_bytes()[..4], [0x07, 0x63, 0xF5, 0x53]);
+        assert_eq!(
+            filter.payload[0].to_le_bytes()[..4],
+            [0x07, 0x63, 0xF5, 0x53]
+        );
         assert_eq!(filter.payload[1].to_le_bytes()[..2], [0x94, 0xF2]);
     }
 
