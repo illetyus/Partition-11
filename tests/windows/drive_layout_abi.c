@@ -23,9 +23,15 @@
 ABI_CHECK(sizeof(CM_NOTIFY_FILTER) == 416, "PnP interface filter x64 size changed");
 ABI_CHECK(offsetof(CM_NOTIFY_FILTER, FilterType) == 8, "PnP filter type offset");
 ABI_CHECK(offsetof(CM_NOTIFY_FILTER, u) == 16, "PnP GUID union offset");
-ABI_CHECK(CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE == 0, "PnP filter enum changed");
+ABI_CHECK(CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE == 0, "PnP interface filter enum changed");
+ABI_CHECK(CM_NOTIFY_FILTER_TYPE_DEVICEHANDLE == 1, "PnP handle filter enum changed");
+ABI_CHECK(offsetof(CM_NOTIFY_FILTER, u.DeviceHandle.hTarget) == 16, "PnP handle target offset");
 ABI_CHECK(CM_NOTIFY_ACTION_DEVICEINTERFACEARRIVAL == 0, "arrival enum changed");
 ABI_CHECK(CM_NOTIFY_ACTION_DEVICEINTERFACEREMOVAL == 1, "removal enum changed");
+ABI_CHECK(CM_NOTIFY_ACTION_DEVICEQUERYREMOVE == 2, "query-remove enum changed");
+ABI_CHECK(CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED == 3, "query-remove-failed enum changed");
+ABI_CHECK(CM_NOTIFY_ACTION_DEVICEREMOVEPENDING == 4, "remove-pending enum changed");
+ABI_CHECK(CM_NOTIFY_ACTION_DEVICEREMOVECOMPLETE == 5, "remove-complete enum changed");
 
 /* SP_DEVINFO_DATA is used to obtain a PnP instance ID from the same set. */
 ABI_CHECK(sizeof(SP_DEVINFO_DATA) == 32, "Rust DeviceInfoData layout changed");
