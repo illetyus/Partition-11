@@ -1,5 +1,30 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN GÜNCEL DEVAM NOKTASI — 18 Ekim 2026 (önce bunu oku)
+
+**P2-I2a tamamlandı ve main'e merge edildi:** [PR #21](https://github.com/illetyus/Partition-11/pull/21), kod birleşim SHA `defe17f610aaa770cc8ffa18a4b9d9fea6c975ce`.
+Beş PR kontrolü başarıyla geçti: Windows/Linux Rust, Electron, Windows UI ve DiskSpd.
+Bu belgeye yazıldığı anda yeni `main` kontrolü ayrı yürütülüyordu; yeni oturum GitHub Actions'ın son durumunu mutlaka sorgulamalı.
+
+**Şimdi doğrudan [P2-I2b Issue #22](https://github.com/illetyus/Partition-11/issues/22) ile devam et.**
+Üst iş [P2-I2 #19](https://github.com/illetyus/Partition-11/issues/19) hâlâ açık.
+P2-I2a'yı yeniden başlatma: `crates/windows-agent/src/disk_discovery.rs`
+SetupAPI üzerinden disk arayüzlerini yalnızca **tespit ediyor**; `partition11-agent discovery-count` sadece sayıyı veriyor.
+**Disk aygıtı açma, disk verisi okuma/yazma, sektör veya bölüm okuma,
+donanım kimliğini doğrulama, Electron IPC bağlantısı veya UAC yok.**
+Tüm görünür uygulama yetenek bayrakları hâlâ **false**.
+
+P2-I2b'nin hedefi agent tarafından seçilen, yeniden doğrulanan yerel
+aygıtlardan yalnızca **disk meta verisi ve sektör geometrisini**
+güvenli Win32 sorgularıyla almak. Ham aygıt yolu renderer'a gönderilmeyecek;
+disk yazma/format ve benchmark hedefleme açılmayacak.
+
+**Zorunlu iş akışı:** küçük kod+test+belge PR'si → tüm ilgili kontroller
+başarılı → `main` squash merge → yeni `main` CI başarılı → Issue ve
+`docs/SESSION_HANDOFF.md` güncellenecek. Bu üstteki blok, bu belgedeki
+önceki tarihî SHA ve eski “sıradaki P2-I2” anlatımlarının yerine geçer.
+
+
 > **Yeni oturum için başlangıç belgesi.** Bu belge 18 Ekim 2026 tarihinde
 > GitHub'dan doğrulanmış bir **anlık durum kaydıdır**. Yeni oturum önce en
 > güncel `main` commit'ini, açık PR/Issue'ları ve GitHub Actions kontrollerini
