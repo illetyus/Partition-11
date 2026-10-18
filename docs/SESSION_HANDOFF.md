@@ -1,5 +1,25 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## P2-I2c-4 — Windows PnP olay bildirimi geliştirme dilimi
+
+- Yeni `pnp_notifications.rs`, Windows `CM_Register_Notification`
+  ile disk arayüzü takma/çıkarma bildirimlerine taramadan önce abone olur.
+  Olay işleyicisi yalnızca tarama neslini geçersiz kılar; disk işlemi yapmaz.
+- Tarama bitişinde bildirim kaydı kapatılır, son bir kez nesil ve envanter
+  doğrulanır. Kayıt başarısızsa tarama reddedilir. ABI C testi ve
+  olay simülasyonu testleri eklendi.
+- **Bu değişiklik PR olarak kontrol edilene ve beş test geçip `main`
+  dalına alınıncaya kadar tamamlandı sayma.** Güncel PR/merge/check
+  durumunu GitHub'dan doğrula.
+- Gerçek Windows 11 USB çıkar/tak testleri, aygıta bağlı HANDLE
+  bildirimleri, kalıcı donanım kimliği ve güvenli IPC hâlâ açık.
+- [Takip Issue #31](https://github.com/illetyus/Partition-11/issues/31).
+  Gerçek disk okuma/yazma, format, UAC ve Electron fiziksel disk erişimi
+  kapalı kalır.
+
+---
+
+
 ## EN GÜNCEL MERGE — PR #37 / P2-I2c-3 tarama iptal nesli (18.10.2026)
 
 - [PR #37](https://github.com/illetyus/Partition-11/pull/37)

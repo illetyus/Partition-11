@@ -40,10 +40,14 @@ pub(crate) struct ScanSnapshot {
 
 /// Agent-private monotonic invalidation generation. Never exported as a
 /// durable disk ID or accepted from the renderer.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct ScanGeneration(Arc<AtomicU64>);
 
 impl ScanGeneration {
+    pub(crate) fn revision(&self) -> u64 {
+        self.0.load(Ordering::Acquire)
+    }
+
     pub(crate) fn invalidate(&self) {
         self.0.fetch_add(1, Ordering::AcqRel);
     }
