@@ -2,7 +2,7 @@
 
 Modern, Windows 11–oriented ext2/ext3/ext4 disk management desktop application.
 
-**Status (2026-10-18):** P0/P1 preview UI and P2 bounded GPT/MBR/image primitives exist. P2-I2a added native SetupAPI enumeration; a **P2-I2b development-only, non-elevated metadata diagnostic** is being validated separately (see [metadata safety and hardware-test matrix](docs/P2_WINDOWS_DISK_METADATA.md)). It queries device number, capacity, sector geometry and bus type without reading raw sectors or exposing device paths. **No user-facing disk scan, live benchmark, raw disk reads/writes, formatting, repair or resize is enabled.** P2-I2b [#22](https://github.com/illetyus/Partition-11/issues/22) remains open for layout and hardware acceptance.
+**Status (2026-10-18):** P0/P1 preview UI and P2 bounded GPT/MBR/image primitives exist. P2-I2a added native SetupAPI enumeration; a **merged P2-I2b first-slice, non-elevated metadata diagnostic** exists (see [metadata safety and hardware-test matrix](docs/P2_WINDOWS_DISK_METADATA.md)). It queries device number, capacity, sector geometry and bus type without reading raw sectors or exposing device paths. **No user-facing disk scan, live benchmark, raw disk reads/writes, formatting, repair or resize is enabled.** P2-I2b [#22](https://github.com/illetyus/Partition-11/issues/22) remains open for layout and hardware acceptance.
 
 Architecture: Electron + React + TypeScript + Fluent UI (desktop shell), isolated Rust core (operation policies and future filesystem adapters), Windows privileged agent (future; explicitly disabled). Linux/WSL is not a runtime prerequisite.
 
