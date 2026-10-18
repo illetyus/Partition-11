@@ -270,7 +270,12 @@ fn property_input(property: u32) -> [u8; 12] {
 fn descriptor_header(bytes: &[u8], minimum: usize) -> Result<(), MetadataError> {
     let version = dword(bytes, 0)? as usize;
     let declared = dword(bytes, 4)? as usize;
-    if bytes.len() < minimum || version < minimum || declared < minimum || declared > bytes.len() || version > declared {
+    if bytes.len() < minimum
+        || version < minimum
+        || declared < minimum
+        || declared > bytes.len()
+        || version > declared
+    {
         return Err(MetadataError::MalformedResponse);
     }
     Ok(())
