@@ -597,6 +597,47 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn cancelled_epoch_never_starts_a_later_device_query() {
+        let generation = ScanGeneration::default();
+        let epoch = ProbeEpoch::capture(&generation);
+        generation.invalidate();
+        let ran = Cell::new(false);
+        assert_eq!(
+            epoch.run(|| {
+                ran.set(true);
+                Ok::<u32, MetadataError>(7)
+            }),
+            Err(MetadataError::IdentityChanged)
+        );
+        assert!(!ran.get(), "cancelled scan must not issue more Win32 I/O");
+    }
+
+    #[test]
+    fn event_during_query_discards_even_successful_or_optional_results() {
+        let generation = ScanGeneration::default();
+        let first = ProbeEpoch::capture(&generation);
+        assert_eq!(
+            first.run(|| {
+                generation.invalidate();
+                Ok::<u32, MetadataError>(123)
+            }),
+            Err(MetadataError::IdentityChanged)
+        );
+
+        let second = ProbeEpoch::capture(&generation);
+        assert_eq!(
+            second.run(|| {
+                generation.invalidate();
+                Err::<u32, MetadataError>(MetadataError::Unsupported)
+            }),
+            Err(MetadataError::IdentityChanged)
+        );
+        let fresh = ProbeEpoch::capture(&generation);
+        assert_eq!(fresh.run(|| Ok::<u32, MetadataError>(9)), Ok(9));
+    }
 
     #[test]
     fn bounded_layout_decoder_rejects_bad_buffer_and_geometry() {
