@@ -16,10 +16,13 @@
 #define ABI_CHECK(condition, label) _Static_assert((condition), label)
 
 ABI_CHECK(sizeof(PARTITION_INFORMATION_GPT) == 112, "GPT partition union arm changed");
-ABI_CHECK(sizeof(PARTITION_INFORMATION_MBR) == 8, "MBR partition union arm changed");
+ABI_CHECK(sizeof(PARTITION_INFORMATION_MBR) <= sizeof(PARTITION_INFORMATION_GPT), "MBR union cannot extend past GPT union");
+/* MBR union-arm size is SDK-revision dependent; the parser reads only
+ * its first PartitionType byte, which is checked through union offset. */
 ABI_CHECK(sizeof(PARTITION_INFORMATION_EX) == 144, "Rust ENTRY_BYTES must be updated");
 ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, PartitionStyle) == 0, "entry style offset");
-ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, PartitionOrdinal) == 4, "entry ordinal offset");
+/* Some SDK reference pages show PartitionOrdinal; the x64 Windows SDK
+ * headers on the CI runner omit it. The parser does not read this field. */
 ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, StartingOffset) == 8, "entry start offset");
 ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, PartitionLength) == 16, "entry length offset");
 ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, PartitionNumber) == 24, "entry number offset");
