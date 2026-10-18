@@ -168,3 +168,30 @@ Electron disk capability flags are enabled.
 Microsoft references:
 https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw
 https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinstanceidw
+
+## P2-I2c-4 — Windows PnP notification invalidation (2026-10-18)
+
+The agent now registers a **GUID_DEVINTERFACE_DISK** interface-class listener
+with Windows `CM_Register_Notification` **before** SetupAPI discovery.
+Its callback only increments the *same atomic generation* shared by the
+current scan snapshot, for arrival, removal, and any unrecognized event.
+No callback I/O or renderer data exists. After the second enumeration,
+the scan checks inventory, safely unregisters (waiting for callbacks),
+then checks the initial generation again. Any observed event rejects
+**the entire aggregate diagnostic**. A registration/unregistration failure
+also fails closed. The listener and all private metadata handles are
+released before returning the result.
+
+The independently compiled Windows SDK C oracle checks the x64
+`CM_NOTIFY_FILTER` size/offset and the relevant enum constants. Tests
+simulate notification invalidation without devices and run registration
+smoke checks on hosted Windows CI. This is **not** real Windows 11 USB
+surprise-removal acceptance: hardware-backed stable identifiers, per-handle
+QUERYREMOVE handling, power transitions, and concurrent long-lived
+selection state still require separate design and physical QA. The scan
+lifetime has a small unavoidable post-unsubscription window; the current
+local diagnostic **grants no usable disk access** and cannot present a
+persistent disk selection.
+
+References: https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_register_notification
+and https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_unregister_notification

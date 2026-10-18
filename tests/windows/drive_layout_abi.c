@@ -11,10 +11,21 @@
 #include <windows.h>
 #include <winioctl.h>
 #include <setupapi.h>
+#include <cfgmgr32.h>
 #include <stddef.h>
 #include <stdio.h>
 
 #define ABI_CHECK(condition, label) _Static_assert((condition), label)
+
+
+/* CM_Register_Notification interface filter: SDK C ABI versus Rust FFI.
+ * Callback registration is non-mutating; the probe never registers anything. */
+ABI_CHECK(sizeof(CM_NOTIFY_FILTER) == 416, "PnP interface filter x64 size changed");
+ABI_CHECK(offsetof(CM_NOTIFY_FILTER, FilterType) == 8, "PnP filter type offset");
+ABI_CHECK(offsetof(CM_NOTIFY_FILTER, u) == 16, "PnP GUID union offset");
+ABI_CHECK(CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE == 0, "PnP filter enum changed");
+ABI_CHECK(CM_NOTIFY_ACTION_DEVICEINTERFACEARRIVAL == 0, "arrival enum changed");
+ABI_CHECK(CM_NOTIFY_ACTION_DEVICEINTERFACEREMOVAL == 1, "removal enum changed");
 
 /* SP_DEVINFO_DATA is used to obtain a PnP instance ID from the same set. */
 ABI_CHECK(sizeof(SP_DEVINFO_DATA) == 32, "Rust DeviceInfoData layout changed");

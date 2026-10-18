@@ -546,12 +546,17 @@ impl fmt::Display for ScanError {
 /// A later, independent SetupAPI pass rejects paths that disappeared.
 pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanError> {
     reject_elevated_process().map_err(ScanError::Security)?;
+    // Subscribe *before* the first SetupAPI enumeration. The callback
+    // shares this atomic generation with the snapshots and cannot do I/O.
+    // If Windows cannot subscribe, fail closed rather than silently using
+    // the weaker path/instance comparison.
+    let generation = ScanGeneration::default();
+    let notifications = crate::pnp_notifications::DiskNotifications::register(&generation)
+        .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
+    let starting_revision = generation.revision();
     let before = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
     // A scan is short-lived and private to this invocation; never mint
     // persistent disk IDs from PnP paths or temporary disk numbers.
-    // Per-invocation guard only. Future PnP notifications must share this
-    // generation across concurrent scans; no event subscription exists yet.
-    let generation = ScanGeneration::default();
     let snapshot = generation
         .capture(&before)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
@@ -573,8 +578,18 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
     snapshot
         .validate(&after, &numbers)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
-    // Close this invocation's snapshot lifetime explicitly. This is NOT
-    // a PnP notification and does not protect against same-ID fast replug.
+    // CM_Unregister waits for in-flight callbacks. Check again *after*
+    // unregister, so a notification during teardown also rejects results.
+    notifications
+        .finish()
+        .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
+    if generation.revision() != starting_revision {
+        return Err(ScanError::Security(MetadataError::IdentityChanged));
+    }
+    snapshot
+        .validate(&after, &numbers)
+        .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
+    // No selections or event subscription survive a local diagnostic.
     generation.invalidate();
     Ok(results)
 }
