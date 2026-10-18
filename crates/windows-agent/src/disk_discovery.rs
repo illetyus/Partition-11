@@ -125,7 +125,10 @@ fn copy_detail_path(words: &[u64], actual_bytes: usize) -> Result<Vec<u16>, Disc
     if actual_bytes < 6 || actual_bytes > MAX_DETAIL_BYTES {
         return Err(DiscoveryError::UnexpectedResponse);
     }
-    let capacity_bytes = words.len().checked_mul(8).ok_or(DiscoveryError::UnexpectedResponse)?;
+    let capacity_bytes = words
+        .len()
+        .checked_mul(8)
+        .ok_or(DiscoveryError::UnexpectedResponse)?;
     if actual_bytes > capacity_bytes {
         return Err(DiscoveryError::UnexpectedResponse);
     }
@@ -135,7 +138,10 @@ fn copy_detail_path(words: &[u64], actual_bytes: usize) -> Result<Vec<u16>, Disc
     let units = unsafe {
         std::slice::from_raw_parts((words.as_ptr() as *const u8).add(4) as *const u16, count)
     };
-    let end = units.iter().position(|&u| u == 0).ok_or(DiscoveryError::UnexpectedResponse)?;
+    let end = units
+        .iter()
+        .position(|&u| u == 0)
+        .ok_or(DiscoveryError::UnexpectedResponse)?;
     if end == 0 {
         return Err(DiscoveryError::UnexpectedResponse);
     }
@@ -170,13 +176,7 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
         let mut data = DeviceInterfaceData::new();
         // SAFETY: Valid RAII-held set, C ABI struct and output pointer.
         let found = unsafe {
-            SetupDiEnumDeviceInterfaces(
-                set.0,
-                ptr::null_mut(),
-                &DISK_GUID,
-                index,
-                &mut data,
-            )
+            SetupDiEnumDeviceInterfaces(set.0, ptr::null_mut(), &DISK_GUID, index, &mut data)
         };
         if found == 0 {
             // SAFETY: Called immediately after failed enumeration.
@@ -205,7 +205,11 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
             )
         };
         // SAFETY: Error code sampled immediately after the call.
-        let status = if first == 0 { unsafe { GetLastError() } } else { 0 };
+        let status = if first == 0 {
+            unsafe { GetLastError() }
+        } else {
+            0
+        };
         if first != 0 || status != ERROR_INSUFFICIENT_BUFFER {
             return Err(DiscoveryError::Win32 {
                 step: "SetupDiGetDeviceInterfaceDetailW/size",
@@ -219,7 +223,11 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
         // detail buffer. DWORD cbSize is 8 for x64, 6 for x86 (Unicode).
         let words_len = (needed as usize).div_ceil(8);
         let mut words = vec![0_u64; words_len];
-        let cb_size = if size_of::<usize>() == 8 { 8_u32 } else { 6_u32 };
+        let cb_size = if size_of::<usize>() == 8 {
+            8_u32
+        } else {
+            6_u32
+        };
         // SAFETY: Allocated 8-byte aligned, >=6 bytes; first DWORD writable.
         unsafe { (words.as_mut_ptr() as *mut u32).write(cb_size) };
         let mut returned = 0_u32;
@@ -242,7 +250,10 @@ pub(crate) fn enumerate_disk_interfaces() -> Result<Vec<Vec<u16>>, DiscoveryErro
                 code: unsafe { GetLastError() },
             });
         }
-        interfaces.push(copy_detail_path(&words, needed as usize)?);
+        if returned < 6 || returned > needed {
+            return Err(DiscoveryError::UnexpectedResponse);
+        }
+        interfaces.push(copy_detail_path(&words, returned as usize)?);
     }
 
     Err(DiscoveryError::LimitExceeded)
