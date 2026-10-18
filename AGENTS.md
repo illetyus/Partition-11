@@ -1,5 +1,20 @@
 # Partition 11 — Agent / future-session instructions
 
+## LATEST VERIFIED MERGE (2026-10-18) — READ FIRST
+
+[PR #26](https://github.com/illetyus/Partition-11/pull/26) merged to `main`
+as `e74a9d7576b624ac05c05948055a268b3104c6ec` (5/5 PR checks passed).
+`crates/core/src/windows_layout.rs` is a pure, bounded Win32 drive-layout
+response decoder; **it does not call DeviceIoControl, access disks or expose
+anything to Electron**. The prior non-elevated agent metadata diagnostic from
+PR #24 remains separate. The next task is [P2-I2b #22](https://github.com/illetyus/Partition-11/issues/22):
+integrate a fixed **read-only** drive-layout IOCTL with strict Windows ABI
+and returned-length validation, then hotplug/identity acceptance. Physical
+writes, format, UAC and UI disk access remain forbidden. Check live `main`
+and its latest CI, then follow the mandatory PR → 5 green checks →
+`main` merge → post-merge CI → handoff update rule below.
+
+
 ## CURRENT RESUME POINTER — 2026-10-18 (supersedes older snapshot below)
 
 **PR #24 P2-I2b first slice merged** to main as `3a917865f821f422dffffd04dbdf0549ef0e6ce6` (2026-10-18). Read-only Windows agent metadata diagnostic now opens non-elevated GENERIC_READ handles for hardcoded metadata IOCTLs and returns aggregate-only counts, not sectors or renderer-visible paths. Pre-merge CI, Windows UI and DiskSpd passed. See [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
