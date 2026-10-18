@@ -1,6 +1,53 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
-## EN GÜNCEL DEVAM NOKTASI — 18 Ekim 2026 (önce bunu oku)
+
+## EN YENİ DEVAM NOKTASI — P2-I2b ilk dilim (18 Ekim 2026)
+
+**P2-I2b için [PR #24](https://github.com/illetyus/Partition-11/pull/24)
+`main` dalına squash merge edildi:** `3a917865f821f422dffffd04dbdf0549ef0e6ce6`.
+PR başı `976c8107bf3d162ddd5b389de3cddb8d53c75fbf` üzerinde
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39094899996),
+[Windows Electron UI](https://github.com/illetyus/Partition-11/actions/runs/39094900015)
+ve [DiskSpd salt okunur XML](https://github.com/illetyus/Partition-11/actions/runs/39094900042)
+başarıyla geçti.
+
+Merge sonrası `main` kontrolleri:
+[CI #39095047432](https://github.com/illetyus/Partition-11/actions/runs/39095047432),
+[UI #39095047436](https://github.com/illetyus/Partition-11/actions/runs/39095047436),
+[DiskSpd #39095047418](https://github.com/illetyus/Partition-11/actions/runs/39095047418).
+**Bu devir kaydı hazırlanırken kontroller çalışıyordu; başarı sonucunu ayrıca doğrula.**
+CI başarılı olmadan üst aşamayı tamamlandı sayma.
+
+**Gerçek yapılan:** `crates/windows-agent/src/disk_metadata.rs` içinde
+yalnız agent tarafından keşfedilen Windows disk arayüzleri açılır
+(`GENERIC_READ`, yetki yükseltme reddi, otomatik RAII kapama).
+Sadece `GET_DEVICE_NUMBER`, `GET_LENGTH_INFO`,
+`STORAGE_QUERY_PROPERTY` sorguları: geçici disk numarası, kapasite,
+mantıksal/fiziksel sektör, bus tipi. Kısa/bozuk yanıt reddi ve eksik
+alanları bilinmiyor işaretleme var. Yerel `metadata-summary` yalnız
+toplam sayıları yayımlar; **ham disk yolu/seri/cihaz numarası Electron'a
+gönderilmez**. Yetki bayrakları hâlâ tümü `false`. Disk sektör okuma/yazma
+ve benchmark/format yok. Ayrıntılar:
+[docs/P2_WINDOWS_DISK_METADATA.md](P2_WINDOWS_DISK_METADATA.md).
+
+**Hâlâ açık: [P2-I2b Issue #22](https://github.com/illetyus/Partition-11/issues/22):**
+`IOCTL_DISK_GET_DRIVE_LAYOUT_EX` ile sınırlı GPT/MBR bölüm yerleşimi,
+bozuk/kısmi cevaplar için ek testler, Windows aygıt erişim reddi/medya
+çıkarılması, gerçek Win11 NVMe/SATA/USB, 512e/4Kn, BitLocker ve sistem
+diski matrisi. Disk numarası ve yeniden sayma kontrolü **güvenilir
+kimlik değildir**. Sonraki P2-I2c/I4 kimlik/hotplug; I5 IPC ve I6 GUI,
+ancak güvenli donanım kabulünden sonra. [Üst iş #19](https://github.com/illetyus/Partition-11/issues/19) da açık.
+
+**İş akışı:** güncel `main` ve CI doğrula → #22'de sıradaki küçük işi
+kodla → Windows/Linux Rust ve Electron/Windows UI/DiskSpd CI hepsi başarılı
+→ PR'yi `main`e squash merge et → yeni `main` CI doğrula → bu devir
+dosyasını ve Issue #22'yi yenile. **Ham yazma, UAC, kullanıcıya benchmark
+ve biçimlendirme kesinlikle açılmayacak.**
+
+---
+
+## ÖNCEKİ DEVAM NOKTASI — P2-I2a, tarihî kayıt
+
 
 **P2-I2a tamamlandı ve main'e merge edildi:** [PR #21](https://github.com/illetyus/Partition-11/pull/21), kod birleşim SHA `defe17f610aaa770cc8ffa18a4b9d9fea6c975ce`.
 Beş PR kontrolü başarıyla geçti: Windows/Linux Rust, Electron, Windows UI ve DiskSpd.
