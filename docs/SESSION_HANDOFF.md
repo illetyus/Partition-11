@@ -1,5 +1,34 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN GÜNCEL DURUM — P2-I2b bölüm yanıtı çözücü `main` içinde (2026-10-18)
+
+- **[PR #26](https://github.com/illetyus/Partition-11/pull/26) merge edildi:** `e74a9d7576b624ac05c05948055a268b3104c6ec`.
+- Birleştirme öncesi GitHub kontrolleri **5/5 başarılı**: Windows/Linux
+  Rust testleri, Electron derlemesi, Windows UI önizlemesi, DiskSpd XML.
+- Yeni saf `crates/core/src/windows_layout.rs` GPT/MBR/RAW Windows
+  `DRIVE_LAYOUT_INFORMATION_EX` yanıtını **bellekte** sınırlandırılmış
+  sayım/uzunluk, disk kapasitesi, isteğe bağlı sektör hizası, numara
+  tekrarları ve çakışmalara karşı doğrular. Disk açma/IOCTL yok.
+- Merge sonrası `main` CI bağlantıları: [CI](https://github.com/illetyus/Partition-11/actions/runs/39112706697),
+  [Windows arayüzü](https://github.com/illetyus/Partition-11/actions/runs/39112706743),
+  [DiskSpd XML](https://github.com/illetyus/Partition-11/actions/runs/39112706855).
+  **Yeni oturum canlı sonuçlarını kontrol etsin.**
+- **Sıradaki küçük iş: [#22](https://github.com/illetyus/Partition-11/issues/22)**:
+  mevcut non-elevated/GENERIC_READ agent içindeki sabit
+  `IOCTL_DISK_GET_DRIVE_LAYOUT_EX` meta veri sorgusunu, Windows SDK
+  C yapı hizalama/sürüm doğrulaması ve boyutu sınırlı cevapla bu saf
+  çözücüye bağlamak; kullanılmayan veya desteklenmeyen cevapları açıkça
+  reddetmek. Sıcak çıkarma/aygıt yeniden kimliklendirme ve fiziksel Windows
+  11 kabulü ayrı güvenlik kapılarıdır.
+- Üst [#19](https://github.com/illetyus/Partition-11/issues/19)
+  hâlâ açık. **Electron disk yetenekleri false; fiziksel diske yazma,
+  format, UAC, bağlama ve gerçek kullanıcı benchmark'ı kapalı.**
+- Sıra: canlı `main` → yeni küçük PR → gereken 5 test → **mutlaka merge**
+  → yeni `main` testleri → Issue ve bu devir dosyasını güncelle.
+
+---
+
+
 ## Güncel uygulama dilimi — P2-I2b bölüm yerleşimi çözümleyicisi (2026-10-18)
 
 - Devir kaydı okunurken canlı `main` SHA ve CI yeniden doğrulanmalıdır.
