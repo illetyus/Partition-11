@@ -14,6 +14,8 @@ mod disk_discovery;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod disk_metadata;
+#[cfg(windows)]
+mod scan_identity;
 
 use partition11_core::PHASE_0_CAPABILITIES;
 

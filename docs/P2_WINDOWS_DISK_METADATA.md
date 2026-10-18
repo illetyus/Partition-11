@@ -126,3 +126,22 @@ assumed value. Neither attribute is used by the Rust parser; the CI oracle
 therefore checks the *actual consumed offsets*, GPT arm size and overall
 entry stride against this installed SDK rather than requiring those
 incidental fields. All true layout/offset mismatches fail compilation.
+
+## P2-I2c-1 — Fail-closed ephemeral scan inventory (2026-10-18)
+
+A new internal, pure `crates/windows-agent/src/scan_identity.rs` guard
+checks the **entire** list of SetupAPI disk interface locators before and
+after one short-lived metadata scan. It fails the entire scan on paths added,
+removed or reassigned; duplicate/invalid locators; duplicate temporary OS
+device numbers among successful probes; or a scan exceeding two minutes.
+Reordered unchanged lists are accepted. Deterministic Rust tests cover
+these transitions. `metadata-summary` returns only an aggregate or a
+rejection, never raw device paths, identifiers or partition extents.
+
+**Strict limitation:** a rapid remove/replug that reuses the same PnP path
+and OS disk number can evade this inventory comparison. It **does not**
+solve durable physical identity or asynchronous hotplug, nor authenticate
+any future renderer selection. P2-I2c must next use validated PnP instance
+context, storage identifiers where genuinely reliable, generation/expiry
+binding and invalidation on device change with hardware tests. No new
+capabilities or physical disk writes are enabled.
