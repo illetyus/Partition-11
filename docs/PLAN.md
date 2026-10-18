@@ -130,6 +130,12 @@ Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
   **merged** via [PR #24](https://github.com/illetyus/Partition-11/pull/24)
   (`3a917865`): temporary device number, capacity, logical/physical sector
   sizes and bus type, fail-closed elevation policy, Win32 errors and tests.
+  **New P2-I2b native read-only layout query merged in PR #28
+  (7cda1638):** 0x00070050 fixed GET IOCTL, bounded 128 partitions,
+  data validated by the pure decoder, aggregate-only internal diagnostic.
+  These are still transient, non-authenticated results; Windows SDK C ABI,
+  hotplug and genuine Windows 11 hardware acceptance remain outstanding.
+  No GUI disk access or write flags. The former status:
   This is NOT a stable identity or UI disk scan. A separate P2-I2b pure
   bounded Win32 drive-layout parser has been added (no live IOCTL yet);
   drive/partition layout querying,

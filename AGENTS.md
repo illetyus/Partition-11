@@ -1,5 +1,22 @@
 # Partition 11 — Agent / future-session instructions
 
+## CURRENT CHECKPOINT — P2-I2b Win32 layout read MERGED
+
+[PR #28](https://github.com/illetyus/Partition-11/pull/28) merged as
+`7cda163816a5994cf894ff3ff48c488df77fb5a4` after 5/5 green PR checks.
+The non-elevated Rust agent has a bounded fixed `IOCTL_DISK_GET_DRIVE_LAYOUT_EX`
+GET-only metadata query feeding the pure `windows_layout` decoder. Local
+diagnostics report **aggregate counts only**. This is not a complete disk
+viewer; there is **no Electron IPC, raw sector I/O, UAC, write, format,
+repair, resize or real benchmark**.
+
+**Next:** [P2-I2b/#22](https://github.com/illetyus/Partition-11/issues/22)
+Windows SDK C ABI oracle and independent Win32 error/identity/hotplug
+validation; parent [#19](https://github.com/illetyus/Partition-11/issues/19).
+Follow the mandatory green checks → merge-to-`main` → post-merge CI →
+handoff rule below. Verify latest live `main` and not just this dated SHA.
+
+
 ## LATEST VERIFIED MERGE (2026-10-18) — READ FIRST
 
 [PR #26](https://github.com/illetyus/Partition-11/pull/26) merged to `main`
