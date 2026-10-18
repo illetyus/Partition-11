@@ -10,10 +10,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <winioctl.h>
+#include <setupapi.h>
 #include <stddef.h>
 #include <stdio.h>
 
 #define ABI_CHECK(condition, label) _Static_assert((condition), label)
+
+/* SP_DEVINFO_DATA is used to obtain a PnP instance ID from the same set. */
+ABI_CHECK(sizeof(SP_DEVINFO_DATA) == 32, "Rust DeviceInfoData layout changed");
+ABI_CHECK(offsetof(SP_DEVINFO_DATA, ClassGuid) == 4, "PnP class GUID offset");
+ABI_CHECK(offsetof(SP_DEVINFO_DATA, DevInst) == 20, "PnP devnode offset");
+ABI_CHECK(offsetof(SP_DEVINFO_DATA, Reserved) == 24, "PnP reserved pointer offset");
 
 ABI_CHECK(sizeof(PARTITION_INFORMATION_GPT) == 112, "GPT partition union arm changed");
 ABI_CHECK(sizeof(PARTITION_INFORMATION_MBR) <= sizeof(PARTITION_INFORMATION_GPT), "MBR union cannot extend past GPT union");
