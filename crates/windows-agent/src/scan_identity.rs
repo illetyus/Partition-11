@@ -11,6 +11,8 @@
 use crate::disk_discovery::DiskInterface;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 const MAX_INTERFACES: usize = 256;
 const MAX_PATH_UNITS: usize = 16 * 1024;
@@ -26,12 +28,36 @@ pub(crate) enum ScanIdentityError {
     InventoryChanged,
     DuplicateDeviceNumber,
     Expired,
+    Cancelled,
 }
 
 pub(crate) struct ScanSnapshot {
     original: HashMap<Vec<u16>, Vec<u16>>,
     started: Instant,
+    generation: u64,
+    clock: Arc<AtomicU64>,
 }
+
+/// Agent-private monotonic invalidation generation. Never exported as a
+/// durable disk ID or accepted from the renderer.
+#[derive(Default)]
+pub(crate) struct ScanGeneration(Arc<AtomicU64>);
+
+impl ScanGeneration {
+    pub(crate) fn invalidate(&self) {
+        self.0.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub(crate) fn capture(&self, records: &[DiskInterface]) -> Result<ScanSnapshot, ScanIdentityError> {
+        Ok(ScanSnapshot {
+            original: unique_records(records)?,
+            started: Instant::now(),
+            generation: self.0.load(Ordering::Acquire),
+            clock: Arc::clone(&self.0),
+        })
+    }
+}
+
 
 fn unique_records(
     records: &[DiskInterface],
@@ -90,10 +116,7 @@ fn verify_scan(
 
 impl ScanSnapshot {
     pub(crate) fn capture(records: &[DiskInterface]) -> Result<Self, ScanIdentityError> {
-        Ok(Self {
-            original: unique_records(records)?,
-            started: Instant::now(),
-        })
+        ScanGeneration::default().capture(records)
     }
 
     pub(crate) fn validate(
@@ -101,12 +124,19 @@ impl ScanSnapshot {
         current: &[DiskInterface],
         disk_numbers: &[u32],
     ) -> Result<(), ScanIdentityError> {
-        verify_scan(
+        if self.clock.load(Ordering::Acquire) != self.generation {
+            return Err(ScanIdentityError::Cancelled);
+        }
+        let result = verify_scan(
             &self.original,
             current,
             disk_numbers,
             self.started.elapsed(),
-        )
+        );
+        if self.clock.load(Ordering::Acquire) != self.generation {
+            return Err(ScanIdentityError::Cancelled);
+        }
+        result
     }
 }
 
@@ -123,6 +153,32 @@ mod tests {
 
     fn baseline() -> Vec<DiskInterface> {
         vec![disk("path-A", "instance-A"), disk("path-B", "instance-B")]
+    }
+
+    #[test]
+    fn invalidation_rejects_a_previously_valid_snapshot() {
+        let guard = ScanGeneration::default();
+        let records = baseline();
+        let snap = guard.capture(&records).unwrap();
+        assert_eq!(snap.validate(&records, &[3, 7]), Ok(()));
+        guard.invalidate();
+        assert_eq!(snap.validate(&records, &[3, 7]), Err(ScanIdentityError::Cancelled));
+        let fresh = guard.capture(&records).unwrap();
+        assert_eq!(fresh.validate(&records, &[3, 7]), Ok(()));
+    }
+
+    #[test]
+    fn multiple_snapshots_share_invalidation_but_independent_guards_do_not() {
+        let guard = ScanGeneration::default();
+        let other = ScanGeneration::default();
+        let records = baseline();
+        let a = guard.capture(&records).unwrap();
+        let b = guard.capture(&records).unwrap();
+        let unrelated = other.capture(&records).unwrap();
+        guard.invalidate();
+        assert_eq!(a.validate(&records, &[]), Err(ScanIdentityError::Cancelled));
+        assert_eq!(b.validate(&records, &[]), Err(ScanIdentityError::Cancelled));
+        assert_eq!(unrelated.validate(&records, &[]), Ok(()));
     }
 
     #[test]

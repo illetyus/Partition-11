@@ -6,7 +6,7 @@
 //! Even a matching temporary disk number is NOT a durable identity.
 
 use crate::disk_discovery;
-use crate::scan_identity::ScanSnapshot;
+use crate::scan_identity::ScanGeneration;
 use partition11_core::windows_layout::{
     parse_drive_layout, DriveLayout, LayoutError, ENTRY_BYTES, HEADER_BYTES, MAX_RESPONSE_BYTES,
 };
@@ -549,7 +549,10 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
     let before = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
     // A scan is short-lived and private to this invocation; never mint
     // persistent disk IDs from PnP paths or temporary disk numbers.
-    let snapshot = ScanSnapshot::capture(&before)
+    // Per-invocation guard only. Future PnP notifications must share this
+    // generation across concurrent scans; no event subscription exists yet.
+    let generation = ScanGeneration::default();
+    let snapshot = generation.capture(&before)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
     let results: Vec<_> = before
         .iter()
