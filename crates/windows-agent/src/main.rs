@@ -63,9 +63,7 @@ fn main() {
                                     logical_sectors += usize::from(sectors.logical.is_some());
                                     physical_sectors += usize::from(sectors.physical.is_some());
                                 }
-                                bus_types += usize::from(
-                                    matches!(metadata.bus_type, Ok(Some(_))),
-                                );
+                                bus_types += usize::from(matches!(metadata.bus_type, Ok(Some(_))));
                             }
                             disk_metadata::ProbeOutcome::Unavailable(error) => {
                                 // Individual Win32 failures remain internal.
@@ -76,8 +74,13 @@ fn main() {
                     }
                     println!(
                         r#"{{"protocol_version":1,"mode":"diagnostic-only","disk_interface_count":{},"temporarily_opened":{},"capacity_known":{},"logical_sector_known":{},"physical_sector_known":{},"bus_type_known":{},"unavailable":{},"ui_disk_access_enabled":false}}"#,
-                        results.len(), opened, capacities, logical_sectors,
-                        physical_sectors, bus_types, unavailable
+                        results.len(),
+                        opened,
+                        capacities,
+                        logical_sectors,
+                        physical_sectors,
+                        bus_types,
+                        unavailable
                     );
                 }
                 Err(error) => {
