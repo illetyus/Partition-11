@@ -117,6 +117,9 @@ fn verify_scan(
 }
 
 impl ScanSnapshot {
+    // Legacy convenience constructor is only needed by deterministic tests.
+    // Production code obtains snapshots from its explicit generation guard.
+    #[cfg(test)]
     pub(crate) fn capture(records: &[DiskInterface]) -> Result<Self, ScanIdentityError> {
         ScanGeneration::default().capture(records)
     }
