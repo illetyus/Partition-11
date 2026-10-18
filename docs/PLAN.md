@@ -173,6 +173,19 @@ PnP notification generation/cancellation, safe handle-to-target binding,
 and physical Windows 11 tests remain OPEN in [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
 No renderer disk access or write/elevation capabilities enabled.
 
+## P2-I2c-4 — Windows PnP device-interface event invalidation
+
+[PR #39](https://github.com/illetyus/Partition-11/pull/39) merged at
+`23c3e4f0`, following 5/5 PR checks. The diagnostic registers
+`CM_Register_Notification` before the first SetupAPI scan and
+invalidates its ephemeral atomic generation when Windows reports disk
+interface changes. Unregistration waits for callbacks, then the scan
+rechecks both the event generation and full device inventory. The
+Microsoft SDK C ABI test and Windows VM subscribe/unsubscribe tests
+passed. **Next issue #31**: per-device handle notifications, hardware
+identity assurance and actual Windows 11 hotplug QA; do not turn on
+physical disk access / raw reads / writes / UAC.
+
 ## P2-I2c-1 — Bounded fail-closed scan inventory
 
 [PR #33](https://github.com/illetyus/Partition-11/pull/33) merged at

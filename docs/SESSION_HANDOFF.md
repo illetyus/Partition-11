@@ -1,5 +1,33 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN GÜNCEL MAIN MERGE — Windows PnP disk olay aboneliği (18.10.2026)
+
+- [PR #39](https://github.com/illetyus/Partition-11/pull/39), **5/5 PR
+  kontrolü başarılı** olarak `main` dalına birleştirildi.
+  SHA: `23c3e4f03ede81c1ba7cc94bffa69aa298065bd6`.
+- Disk arayüzü bildirimleri taramadan önce `CM_Register_Notification`
+  ile dinleniyor; bildirim gelirse aynı taramanın nesli geçersiz kılınıyor.
+  Tarama sonunda abonelik güvenle kapatılıp durum tekrar denetleniyor.
+  Windows SDK C uyum testi ve Windows VM abonelik testi başarılı.
+- DiskSpd ilk çalıştırmada dış indirme zaman aşımı verdi; başarısız iş
+  aynı commit üzerinde yeniden çalıştırılarak başarılı sonuçlandı.
+  Hiçbir test geçiştirilmedi.
+- Yeni `main` kontrol bağlantıları:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39164828649),
+  [Windows önizleme](https://github.com/illetyus/Partition-11/actions/runs/39164828633),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39164828608).
+  **Son durumlarını GitHub'dan ayrıca teyit et.**
+- Hâlâ açık: **[P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31)**.
+  Gerçek Windows 11 fiziksel takma/çıkarma testleri, aygıta özel
+  handle kaldırma bildirimi, güvenilir aygıt kimliği, işlem sırasında
+  kesinti/iptal, UI bağlantısında güvenli seçim.
+- PnP bildirimleri aygıtı kalıcı biçimde doğrulamaz; fiziksel aygıtta
+  eşzamanlılık ve USB çıkar/tak yarışları için kabul tamamlanmadı.
+  Electron disk erişimi, raw sektör okuma, disk yazma, format ve UAC kapalı.
+
+---
+
+
 ## P2-I2c-4 — Windows PnP olay bildirimi geliştirme dilimi
 
 - Yeni `pnp_notifications.rs`, Windows `CM_Register_Notification`
@@ -8,8 +36,8 @@
 - Tarama bitişinde bildirim kaydı kapatılır, son bir kez nesil ve envanter
   doğrulanır. Kayıt başarısızsa tarama reddedilir. ABI C testi ve
   olay simülasyonu testleri eklendi.
-- **Bu değişiklik PR olarak kontrol edilene ve beş test geçip `main`
-  dalına alınıncaya kadar tamamlandı sayma.** Güncel PR/merge/check
+- **Bu değişiklik daha sonra PR #39 ile `main` dalına alındı;
+  yukarıdaki gerçek SHA ve durum kaydını esas al.** Güncel PR/merge/check
   durumunu GitHub'dan doğrula.
 - Gerçek Windows 11 USB çıkar/tak testleri, aygıta bağlı HANDLE
   bildirimleri, kalıcı donanım kimliği ve güvenli IPC hâlâ açık.
