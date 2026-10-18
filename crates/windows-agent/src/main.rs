@@ -1,7 +1,8 @@
 //! Non-elevated diagnostic agent, not wired to Electron or IPC.
 //! P2-I2a enumerates present Windows disk interfaces using SetupAPI.
 //! P2-I2b provides a separate, non-elevated, metadata-only diagnostic; it
-//! opens GENERIC_READ handles but never reads sectors or writes to disks.
+//! opens GENERIC_READ handles, queries bounded drive-layout metadata, but
+//! never reads raw sectors or writes to disks.
 //! All Electron/runtime capabilities remain false.
 #![deny(unsafe_code)]
 
@@ -51,6 +52,8 @@ fn main() {
                     let mut logical_sectors = 0_usize;
                     let mut physical_sectors = 0_usize;
                     let mut bus_types = 0_usize;
+                    let mut layouts = 0_usize;
+                    let mut verified_partitions = 0_usize;
                     let mut unavailable = 0_usize;
                     for result in &results {
                         match result {
@@ -64,6 +67,10 @@ fn main() {
                                     physical_sectors += usize::from(sectors.physical.is_some());
                                 }
                                 bus_types += usize::from(matches!(metadata.bus_type, Ok(Some(_))));
+                                if let Ok(layout) = &metadata.partition_layout {
+                                    layouts += 1;
+                                    verified_partitions += layout.occupied.len();
+                                }
                             }
                             disk_metadata::ProbeOutcome::Unavailable(error) => {
                                 // Individual Win32 failures remain internal.
@@ -73,13 +80,15 @@ fn main() {
                         }
                     }
                     println!(
-                        r#"{{"protocol_version":1,"mode":"diagnostic-only","disk_interface_count":{},"temporarily_opened":{},"capacity_known":{},"logical_sector_known":{},"physical_sector_known":{},"bus_type_known":{},"unavailable":{},"ui_disk_access_enabled":false}}"#,
+                        r#"{{"protocol_version":1,"mode":"diagnostic-only","disk_interface_count":{},"temporarily_opened":{},"capacity_known":{},"logical_sector_known":{},"physical_sector_known":{},"bus_type_known":{},"layout_known":{},"verified_partition_count":{},"unavailable":{},"ui_disk_access_enabled":false}}"#,
                         results.len(),
                         opened,
                         capacities,
                         logical_sectors,
                         physical_sectors,
                         bus_types,
+                        layouts,
+                        verified_partitions,
                         unavailable
                     );
                 }
