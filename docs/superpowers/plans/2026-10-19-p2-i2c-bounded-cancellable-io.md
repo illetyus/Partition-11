@@ -126,8 +126,9 @@ Expected: all pass.
   - `pub(crate) const IOCTL_TIMEOUT_MS: u32 = 5_000`
   - `pub(crate) const CANCEL_GRACE_MS: u32 = 1_000`
   - `pub(crate) const WAIT_SLICE_MS: u32 = 50`
-  - `pub(crate) enum OverlappedIoError { TimedOut, Cancelled, StuckAfterCancel, MalformedResponse, Win32(u32) }`
+  - `pub(crate) enum OverlappedIoError { TimedOut, Cancelled, MalformedResponse, Win32(u32) }`
   - `pub(crate) fn run_worker_ioctl(raw_handle: usize, code: u32, input: &[u8], max_output: usize, cancellation_requested: impl Fn() -> bool) -> Result<Vec<u8>, OverlappedIoError>`
+  - private coordinator state `IoDecision::StuckAfterCancel` used by deterministic tests; the native wrapper must not return from this state while kernel I/O can still reference request memory.
 - The function is worker-only; it must never be called from the long-lived parent process.
 
 - [ ] **Step 1: Write failing deterministic state-machine tests**
@@ -163,7 +164,7 @@ At timeout or cancellation:
 3. give completion exactly one additional second;
 4. after grace expiry, mark `StuckAfterCancel`; never accept later success as metadata.
 
-If the driver still owns the request after grace, keep `OVERLAPPED` and buffers alive inside the disposable worker until terminal completion or process death. Do not drop/reuse them while pending.
+If the driver still owns the request after grace, the native wrapper enters a non-returning `hold_pending_request_until_process_exit(active_request) -> !` path. That path parks/sleeps while retaining the event, `OVERLAPPED`, input and output buffers on the worker stack/heap. It never reports metadata and never drops/reuses those resources; the parent 20-second watchdog ultimately terminates the disposable process. Unit tests exercise the private coordinator's `StuckAfterCancel` decision without entering the non-returning native hold.
 
 - [ ] **Step 4: Extend independent Windows SDK C assertions**
 
@@ -265,7 +266,6 @@ Add tests proving:
 - only the four fixed IOCTL codes can enter the query function;
 - PnP cancellation maps to `MetadataError::Cancelled`;
 - 5-second timeout maps to `MetadataError::TimedOut`;
-- `StuckAfterCancel` is never converted to a ready metadata result;
 - bounded drive-layout retry stops after cancellation and does not issue the next retry.
 
 Add `TimedOut`, `Cancelled`, and `WorkerFailed` to `MetadataError` before implementing mappings only after RED is observed.
@@ -337,7 +337,7 @@ Sequence:
 8. encode one bounded reply to stdout;
 9. flush and exit.
 
-If an overlapped request reaches `StuckAfterCancel`, do not serialize success. Keep request storage alive while the process awaits termination; parent hard deadline remains the ultimate backstop.
+If the overlapped coordinator reaches its stuck-after-grace state, `run_worker_ioctl` does not return to this layer. It retains the active request and waits for process death, so no reply can be serialized and no request storage can be freed prematurely. The parent hard deadline is the ultimate backstop.
 
 - [ ] **Step 4: Verify GREEN**
 
