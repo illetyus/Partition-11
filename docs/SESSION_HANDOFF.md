@@ -773,3 +773,35 @@ was performed. The user's manual gate remains USB/NVMe/SATA, hotplug,
 BitLocker, and 512e/4Kn. No PR, push, or merge was done; these changes remain
 local and unmerged. Continue with a final review, then seek GitHub CI/PR
 authorization as required; do not perform physical-device acceptance.
+
+## 10. 2026-10-19 — independent inventory lifecycle review fixes
+
+The fresh review of the local inventory implementation found two important
+process-lifetime issues and two minor issues. The Electron service previously
+released its single-flight slot as soon as it requested child termination;
+it now retains that slot until `close`, including on timeout and oversized
+output. Stdin `EPIPE` is handled as a safe child failure. The stale agent
+module header now describes the Electron inventory protocol accurately.
+
+The Windows agent now arms its own 32-second hard deadline before reading the
+request or scanning. This is independent of Electron's 35-second watchdog and
+the cooperative 30-second scan budget; its dedicated worker already has its
+own 20-second hard deadline. Exit code 124 is mapped to a timeout in Electron.
+No job object or new dependency was added.
+
+Verification after the fixes: `npm run build`; `npm run test:main` (40/40);
+Windows UI smoke (32 assertions with fake IPC, no physical scan; local capture
+skipped); Rust fmt; warning-denying Clippy; core tests (18/18); targeted agent
+tests (1 hard-deadline, 4 protocol, 7 scan-identity, 4 timeout). The full agent
+suite was not run because it includes physical-device probes. `npm run
+package:win:dir` succeeded; packaged `capabilities` reports all inspect/write
+flags false. No inventory command or physical-device test was run.
+
+Updated unsigned x64 candidate:
+`release/Partition-11-Windows-x64-preview-reviewed.zip` (202,985,746 bytes),
+SHA-256 `854717F9274544CF961F4EDA96B8ED2BAAEFA4347FC430DEF6606C2C79F721658`.
+ZIP integrity and the hashes of `Partition 11.exe`, `resources/app.asar`, and
+`resources/agent/partition11-agent.exe` were checked against the unpacked
+package. It remains a local, unmerged preview; GitHub CI and the user's real
+Windows 11 USB/NVMe/SATA, hotplug, BitLocker and 512e/4Kn acceptance remain
+open.

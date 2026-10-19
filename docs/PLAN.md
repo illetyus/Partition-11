@@ -10,14 +10,20 @@ timeout/process handling, a non-selectable real-inventory view, and a separate
 synthetic demo view. The Windows x64 unsigned unpacked package and ZIP are
 available under `release/` in that worktree.
 
-Local verification: TypeScript/renderer build passed; 37 main-process tests
+An independent review found and this worktree fixed three lifecycle gaps:
+timeouts retain the scan slot until the killed child closes, the agent exits at
+an independent 32-second hard deadline, and stdin pipe errors terminate and
+drain the child safely. The agent's deadline exit is surfaced as a timeout; the
+stale module header was corrected.
+
+Local verification: TypeScript/renderer build passed; 40 main-process tests
 passed; Electron UI smoke passed 32 assertions with mocked IPC and no automatic
 device query. Rust formatting and warning-denying Clippy passed; 18 core,
-4 protocol, 1 deadline, 7 scan-identity, and 3 worker-timeout tests passed.
-The Rust agent was built for Windows x64 and included at
-`resources/agent/partition11-agent.exe`. The local Electron Viz screenshot
-capture path failed earlier with `UnknownVizError`, so this run explicitly
-skipped 11 captures; GitHub's screenshot job remains required.
+1 hard-deadline, 4 protocol, 7 scan-identity, and 4 timeout tests passed.
+The Windows x64 agent is included in the unsigned unpacked package and
+`release/Partition-11-Windows-x64-preview-reviewed.zip`. The local Electron
+Viz screenshot capture path failed earlier with `UnknownVizError`, so this run
+explicitly skipped 11 captures; GitHub's screenshot job remains required.
 
 This is an **unmerged local implementation**, not a GitHub CI result or
 physical Windows 11 acceptance. The agent and renderer were not used to query
