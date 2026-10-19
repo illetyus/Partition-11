@@ -641,7 +641,7 @@ mod tests {
             ),
             ERROR_CANCELLED
         );
-        assert!(state.has_open_handle());
+        assert_eq!(lease.raw_handle(), 0x1234);
         drop(lease);
         state.finish_io();
         assert!(!state.has_open_handle());
