@@ -1,5 +1,33 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-19)
 
+## EN YENİ DEVAM NOKTASI — P2 envanter birleşti; P2.5 yazma sınırı planlayıcısı
+
+PR #49, `da764c19ef24bfb9eb62e0ad147fe074ca841675` başıyla tüm **5/5 PR
+kontrolünden** sonra `main` dalına birleşti. Yeni `main` SHA'sı
+`fdab284f936bf20a5bcecd5b28d4ca200280a4aa` üzerinde CI, Windows Electron UI
+ve DiskSpd XML kontrolleri **3/3 başarılı**:
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39302671867),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39302671866),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39302671967).
+
+P2 envanter yolu salt metadata döndürür; ham sektörler, seri numaraları,
+kalıcı donanım kimliği ve disk yazma yetkisi sunmaz. Issue #31, fiziksel
+Windows 11 kabulü ve kalıcı kimlik için açık kalır.
+
+P2.5B.2, `benchmarkPolicy.ts` içinde yazma profillerine sabit DiskSpd
+`-g100000` (tek thread/hedef için 100 MB/s) sınırı ekliyor ve tüm tekrarlar
+ile 15 saniyelik sonlandırma payını içeren azami yazma baytı tahmini üretiyor.
+Yeni testler politika üst sınırında 27 GB'lık tahmini doğruluyor. Bu yalnızca
+planlayıcı/test altyapısıdır: kullanıcı onayı, canlı volume yetkilendirmesi,
+DiskSpd worker, Job Object iptali ve gerçek benchmark hâlâ kapalıdır.
+
+Bu çalışma dalındaki doğrulama: `npm run test:main` **42/42 başarılı**.
+Sonraki sıra, önce ayrı testli adımlarla Windows volume uygunluğu/kimliği,
+uygulama dosyasının canlı doğrulaması, kullanıcı onayı ve tam süreç ağacı
+iptalini kurmaktır. Fiziksel disk testi kullanıcıya aittir.
+
+---
+
 ## EN YENİ DEVAM NOKTASI — 2. madde tamamlandı: bounded/cancellable metadata I/O (19 Ekim 2026)
 
 [PR #46](https://github.com/illetyus/Partition-11/pull/46) `main` dalına

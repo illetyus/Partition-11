@@ -19,11 +19,15 @@ export type PlannedDiskSpdWorkload = Readonly<{
   args: readonly string[];
   expectedWrite: boolean;
   maxWallClockSeconds: number;
+  estimatedMaxWriteBytes: number;
 }>;
 
 const VALID_PROFILES = new Set<string>(BENCHMARK_PROFILES.map(p => p.id));
 const MAX_SECONDS = 60;
 const MAX_RUNS = 3;
+// DiskSpd -g is bytes/ms per thread and target. With the fixed single-thread,
+// single-file policy below, this caps a write run at 100 MB/s.
+const MAX_WRITE_BYTES_PER_MS = 100_000;
 
 export function validateWorkload(value: unknown): BenchmarkWorkload {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -83,17 +87,23 @@ export function buildDiskSpdFileArgs(
     "-t1",
     "-w" + (plan.direction === "write" ? "100" : "0"),
     "-W" + plan.warmupSeconds,
-    "-d" + plan.measurementSeconds,
-    "-L",
-    "-Rxml"
+    "-d" + plan.measurementSeconds
   ];
+  if (plan.direction === "write") args.push("-g" + MAX_WRITE_BYTES_PER_MS);
+  args.push("-L", "-Rxml");
   if (profile.pattern === "random") args.push("-r4K");
   args.push(trustedFilePath);
+  const maxWallClockSeconds = (plan.warmupSeconds + plan.measurementSeconds + 15) * plan.repetitions;
   return Object.freeze({
     profileId: plan.profileId,
     direction: plan.direction,
     args: Object.freeze(args),
     expectedWrite: plan.direction === "write",
-    maxWallClockSeconds: (plan.warmupSeconds + plan.measurementSeconds + 15) * plan.repetitions
+    maxWallClockSeconds,
+    // Include the full parent hard-deadline allowance for every repetition.
+    // Consent UI can round this conservative upper estimate for display.
+    estimatedMaxWriteBytes: plan.direction === "write"
+      ? MAX_WRITE_BYTES_PER_MS * 1_000 * maxWallClockSeconds
+      : 0
   });
 }

@@ -15,10 +15,29 @@ test("DiskSpd presets generate fixed file-only flags with no shell", () => {
   const r = buildDiskSpdFileArgs(file, read);
   assert.deepEqual(r.args, ["-b1M", "-o8", "-t1", "-w0", "-W0", "-d2", "-L", "-Rxml", file]);
   assert.equal(r.expectedWrite, false);
+  assert.equal(r.estimatedMaxWriteBytes, 0);
   const w = buildDiskSpdFileArgs(file, write);
-  assert.deepEqual(w.args, ["-b4K", "-o32", "-t1", "-w100", "-W0", "-d2", "-L", "-Rxml", "-r4K", file]);
+  assert.deepEqual(w.args, ["-b4K", "-o32", "-t1", "-w100", "-W0", "-d2", "-g100000", "-L", "-Rxml", "-r4K", file]);
   assert.equal(w.expectedWrite, true);
+  assert.equal(w.estimatedMaxWriteBytes, 1_700_000_000);
   assert.ok(w.maxWallClockSeconds < 60);
+});
+
+test("write estimate includes the full bounded process deadline and repetitions", () => {
+  const plan = buildDiskSpdFileArgs("D:\\p11-ci\\scratch.bin", {
+    ...write, warmupSeconds: 5, measurementSeconds: 15, repetitions: 3
+  });
+  assert.equal(plan.maxWallClockSeconds, 105);
+  assert.equal(plan.estimatedMaxWriteBytes, 10_500_000_000);
+});
+
+test("largest allowed write plan has a finite conservative byte budget", () => {
+  const plan = buildDiskSpdFileArgs("D:\\p11-ci\\scratch.bin", {
+    ...write, warmupSeconds: 15, measurementSeconds: 60, repetitions: 3
+  });
+  assert.equal(plan.maxWallClockSeconds, 270);
+  assert.equal(plan.estimatedMaxWriteBytes, 27_000_000_000);
+  assert.ok(Number.isSafeInteger(plan.estimatedMaxWriteBytes));
 });
 
 test("rejects target specifiers, device paths, root paths, injections", () => {
