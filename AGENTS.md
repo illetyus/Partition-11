@@ -1,5 +1,17 @@
 # Partition 11 — Agent / future-session instructions
 
+## LATEST MERGED DEVELOPMENT — per-HANDLE removal lifecycle (2026-10-19)
+
+- [PR #43](https://github.com/illetyus/Partition-11/pull/43) merged to `main` as `b17e0fbeacd9ee28f7383b5a75a1d7a8198f6a43` after **5/5 successful PR checks**.
+- Requested roadmap item **1 is complete at code/CI level**: every successfully opened metadata disk HANDLE gets a `CM_NOTIFY_FILTER_TYPE_DEVICEHANDLE` registration. Idle query-remove closes the exact HANDLE in the callback; a HANDLE currently leased to synchronous `DeviceIoControl` is never closed underneath that call. Query-remove is vetoed with `ERROR_CANCELLED`, the scan is invalidated, and the HANDLE is closed immediately when the call returns.
+- Registration races are fail-closed: the filter HANDLE remains valid until `CM_Register_Notification` returns. `DEVICEREMOVEPENDING` / `DEVICEREMOVECOMPLETE` also invalidate and close/defer-close. `DEVICEQUERYREMOVEFAILED` never resurrects a stale scan; the next invocation re-enumerates and opens a fresh HANDLE.
+- Windows SDK C oracle independently verifies the HANDLE-union offset, filter/action enum values and `ERROR_CANCELLED`. Scope/design: [docs/P2_I2C_HANDLE_REMOVAL.md](docs/P2_I2C_HANDLE_REMOVAL.md).
+- Fresh post-merge `main` verification is **5/5 successful**: [CI](https://github.com/illetyus/Partition-11/actions/runs/39179456003), [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39179456177), [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39179455971).
+- **Next roadmap item 2:** bounded/cancellable synchronous metadata I/O. A driver-blocked `DeviceIoControl` is not force-cancelled by PR #43; busy query-remove is safely vetoed until the call returns. Durable hardware identity and physical Win11 hotplug acceptance remain later gates. Electron disk access/writes/elevation remain disabled.
+
+---
+
+
 ## LATEST MERGED DEVELOPMENT — P2-I2c metadata query epoch (2026-10-19)
 
 - [PR #41](https://github.com/illetyus/Partition-11/pull/41) merged as `6b9f293dea427f598fdc35ed355d9d39f5d6d3dd`, after 5/5 successful PR checks. Tests were written first and failed as expected (missing `ProbeEpoch`), then Windows/Linux Rust and Electron/Windows UI/DiskSpd passed.
