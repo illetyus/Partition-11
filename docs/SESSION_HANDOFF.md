@@ -1,5 +1,40 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
 
+## EN YENİ DEVAM NOKTASI — 1. madde tamamlandı: HANDLE kaldırma yaşam döngüsü (19 Ekim 2026)
+
+[PR #43](https://github.com/illetyus/Partition-11/pull/43) `main` dalına
+`b17e0fbeacd9ee28f7383b5a75a1d7a8198f6a43` olarak birleşti.
+PR ve birleşme sonrası `main` kontrollerinin **5/5'i başarılı**.
+
+**Tamamlanan 1. madde:**
+- Açılan her metadata disk HANDLE'ı için
+  `CM_NOTIFY_FILTER_TYPE_DEVICEHANDLE` aboneliği kuruluyor.
+- HANDLE boşta iken `DEVICEQUERYREMOVE` gelirse callback HANDLE'ı kapatıp
+  kaldırmaya izin veriyor.
+- Senkron `DeviceIoControl` HANDLE'ı kullanıyorsa callback HANDLE'ı alttan
+  kapatmıyor; taramayı geçersiz kılıyor, `ERROR_CANCELLED` ile o kaldırma
+  denemesini veto ediyor ve sorgu döner dönmez HANDLE'ı kapatıyor.
+- Kayıt sırasında query-remove yarışı HANDLE'ı erken kapatamıyor.
+- `DEVICEREMOVEPENDING` / `DEVICEREMOVECOMPLETE` yolları da güvenli
+  close/deferred-close kullanıyor.
+- `DEVICEQUERYREMOVEFAILED` eski taramayı yeniden canlandırmıyor; sonraki
+  tarama SetupAPI ile yeniden keşfedip yeni HANDLE açıyor.
+- Windows SDK C oracle HANDLE ABI'sini ve olay/sabit değerlerini ayrıca
+  doğruluyor. Ayrıntı: [P2_I2C_HANDLE_REMOVAL.md](P2_I2C_HANDLE_REMOVAL.md).
+
+**Doğrulanmış yeni main koşumları:** [CI](https://github.com/illetyus/Partition-11/actions/runs/39179456003),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39179456177),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39179455971).
+
+**Sıradaki kesin iş = 2. madde:** sürücü içinde bloklanmış senkron
+`DeviceIoControl` çağrısına güvenli iptal/zaman aşımı kazandırmak. PR #43 bunu
+zorla kesmiyor; bu bilinçli sınırdır. Donanım kimliği ve gerçek fiziksel Windows
+11 USB/NVMe/SATA/BitLocker/512e/4Kn testleri sonraki ayrı maddelerdir.
+Electron fiziksel disk erişimi, raw yazma, UAC ve format hâlâ kapalı.
+
+---
+
+
 ## EN YENİ DEVAM NOKTASI — P2-I2c sorgu koruması (19 Ekim 2026)
 
 **[PR #41](https://github.com/illetyus/Partition-11/pull/41) main'e birleşti:**
