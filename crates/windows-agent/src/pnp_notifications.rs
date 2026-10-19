@@ -676,10 +676,7 @@ mod tests {
         let generation = ScanGeneration::default();
         let state = DeviceHandleState::for_test(0x1234);
         let lease = state.begin_io().expect("test handle lease");
-        let context = Box::new(DeviceHandleContext::for_test(
-            generation,
-            state.clone(),
-        ));
+        let context = Box::new(DeviceHandleContext::for_test(generation, state.clone()));
         let pointer = (&*context as *const DeviceHandleContext)
             .cast_mut()
             .cast::<c_void>();
