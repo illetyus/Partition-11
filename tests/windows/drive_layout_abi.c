@@ -32,6 +32,7 @@ ABI_CHECK(CM_NOTIFY_ACTION_DEVICEQUERYREMOVE == 2, "query-remove enum changed");
 ABI_CHECK(CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED == 3, "query-remove-failed enum changed");
 ABI_CHECK(CM_NOTIFY_ACTION_DEVICEREMOVEPENDING == 4, "remove-pending enum changed");
 ABI_CHECK(CM_NOTIFY_ACTION_DEVICEREMOVECOMPLETE == 5, "remove-complete enum changed");
+ABI_CHECK(ERROR_CANCELLED == 1223, "query-remove veto Win32 error changed");
 
 /* SP_DEVINFO_DATA is used to obtain a PnP instance ID from the same set. */
 ABI_CHECK(sizeof(SP_DEVINFO_DATA) == 32, "Rust DeviceInfoData layout changed");
