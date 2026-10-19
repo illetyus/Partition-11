@@ -13,6 +13,7 @@ use partition11_core::windows_layout::{
 use std::ffi::c_void;
 use std::fmt;
 use std::ptr;
+use std::sync::Arc;
 
 type Handle = *mut c_void;
 const INVALID_HANDLE_VALUE: Handle = -1_isize as Handle;
@@ -86,9 +87,66 @@ struct OwnedHandle(Handle);
 
 impl Drop for OwnedHandle {
     fn drop(&mut self) {
-        // SAFETY: This owns a real successful CreateFileW/OpenProcessToken
-        // handle, not a borrowed/pseudo-handle.
+        // SAFETY: This type is now used only for OpenProcessToken. Device
+        // handles use RegisteredDeviceHandle below so PnP can close them.
         unsafe { CloseHandle(self.0) };
+    }
+}
+
+struct RegisteredDeviceHandle {
+    state: Arc<crate::pnp_notifications::DeviceHandleState>,
+    notifications: Option<crate::pnp_notifications::DeviceHandleNotifications>,
+}
+
+impl RegisteredDeviceHandle {
+    fn from_raw(raw_handle: Handle, generation: &ScanGeneration) -> Result<Self, MetadataError> {
+        let (state, notifications) = crate::pnp_notifications::DeviceHandleNotifications::register(
+            raw_handle as usize,
+            generation,
+        )
+        .map_err(|_| MetadataError::IdentityChanged)?;
+        Ok(Self {
+            state,
+            notifications: Some(notifications),
+        })
+    }
+
+    fn with_raw<T>(
+        &self,
+        operation: impl FnOnce(Handle) -> Result<T, MetadataError>,
+    ) -> Result<T, MetadataError> {
+        let lease = self
+            .state
+            .begin_io()
+            .map_err(|_| MetadataError::DeviceRemoved)?;
+        let raw_handle = lease.raw_handle() as Handle;
+        let result = operation(raw_handle);
+        drop(lease);
+        // If a callback raced this synchronous operation, it only requested
+        // close while the lease existed. Close immediately after release.
+        self.state.finish_io();
+        result
+    }
+
+    fn finish(mut self) -> Result<(), MetadataError> {
+        let unregister = if let Some(notifications) = self.notifications.take() {
+            notifications.finish()
+        } else {
+            Ok(())
+        };
+        self.state.request_close();
+        self.state.finish_io();
+        unregister.map_err(|_| MetadataError::IdentityChanged)
+    }
+}
+
+impl Drop for RegisteredDeviceHandle {
+    fn drop(&mut self) {
+        if let Some(notifications) = self.notifications.take() {
+            let _ = notifications.finish();
+        }
+        self.state.request_close();
+        self.state.finish_io();
     }
 }
 
@@ -168,7 +226,10 @@ fn reject_elevated_process() -> Result<(), MetadataError> {
     Ok(())
 }
 
-fn open_agent_discovered_path(path: &[u16]) -> Result<OwnedHandle, MetadataError> {
+fn open_agent_discovered_path(
+    path: &[u16],
+    generation: &ScanGeneration,
+) -> Result<RegisteredDeviceHandle, MetadataError> {
     if path.is_empty() || path.len() > MAX_INTERFACE_UNITS || path.contains(&0) {
         return Err(MetadataError::MalformedResponse);
     }
@@ -191,13 +252,15 @@ fn open_agent_discovered_path(path: &[u16]) -> Result<OwnedHandle, MetadataError
     if handle.is_null() || handle == INVALID_HANDLE_VALUE {
         return Err(last_error());
     }
-    Ok(OwnedHandle(handle))
+    // The raw handle is transferred to the per-HANDLE PnP state. If
+    // registration fails, that state closes it before this function returns.
+    RegisteredDeviceHandle::from_raw(handle, generation)
 }
 
 /// Only fixed, hardcoded metadata IOCTLs are used. There is no arbitrary
 /// IOCTL code, user-provided path or sector-read API.
 fn ioctl(
-    handle: &OwnedHandle,
+    handle: &RegisteredDeviceHandle,
     code: u32,
     input: &[u8],
     max_output: usize,
@@ -213,22 +276,26 @@ fn ioctl(
         input.as_ptr().cast()
     };
     // SAFETY: Inputs are immutable, outputs own initialized writable bytes;
-    // buffers and DWORD lengths are bounded, and calls are synchronous.
-    let ok = unsafe {
-        DeviceIoControl(
-            handle.0,
-            code,
-            input_ptr,
-            input.len() as u32,
-            bytes.as_mut_ptr().cast(),
-            bytes.len() as u32,
-            &mut returned,
-            ptr::null_mut(),
-        )
-    };
-    if ok == 0 {
-        return Err(last_error());
-    }
+    // buffers and DWORD lengths are bounded. The handle lease prevents the
+    // query-remove callback from closing underneath synchronous DeviceIoControl.
+    handle.with_raw(|raw_handle| {
+        let ok = unsafe {
+            DeviceIoControl(
+                raw_handle,
+                code,
+                input_ptr,
+                input.len() as u32,
+                bytes.as_mut_ptr().cast(),
+                bytes.len() as u32,
+                &mut returned,
+                ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(last_error());
+        }
+        Ok(())
+    })?;
     if returned == 0 || returned as usize > bytes.len() {
         return Err(MetadataError::MalformedResponse);
     }
@@ -363,7 +430,7 @@ fn map_layout_error(error: LayoutError) -> MetadataError {
 /// Query only the agent-owned, non-elevated GENERIC_READ handle.
 /// No sector I/O, partition changes, user-provided IOCTL, or renderer API.
 fn query_drive_layout(
-    handle: &OwnedHandle,
+    handle: &RegisteredDeviceHandle,
     capacity: u64,
     logical_sector_size: u32,
     epoch: &ProbeEpoch<'_>,
@@ -374,25 +441,29 @@ fn query_drive_layout(
         let mut bytes = vec![0_u8; limit];
         let mut returned = 0_u32;
         // SAFETY: Fixed metadata-only GET IOCTL and a private, initialized,
-        // bounded output allocation. Input/overlapped are null; synchronous.
-        let ok = unsafe {
-            DeviceIoControl(
-                handle.0,
-                IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
-                ptr::null(),
-                0,
-                bytes.as_mut_ptr().cast(),
-                limit as u32,
-                &mut returned,
-                ptr::null_mut(),
-            )
-        };
-        // SAFETY: Snapshot the error immediately, before any other Win32 call.
-        let status = if ok == 0 {
-            unsafe { GetLastError() }
-        } else {
-            0
-        };
+        // bounded output allocation. The handle lease prevents callback close
+        // while this synchronous request owns the HANDLE.
+        let (ok, status) = handle.with_raw(|raw_handle| {
+            let ok = unsafe {
+                DeviceIoControl(
+                    raw_handle,
+                    IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
+                    ptr::null(),
+                    0,
+                    bytes.as_mut_ptr().cast(),
+                    limit as u32,
+                    &mut returned,
+                    ptr::null_mut(),
+                )
+            };
+            // SAFETY: Snapshot immediately after the Win32 call.
+            let status = if ok == 0 {
+                unsafe { GetLastError() }
+            } else {
+                0
+            };
+            Ok((ok, status))
+        })?;
         epoch.ensure_current()?;
         if ok == 0 {
             if matches!(
@@ -512,7 +583,7 @@ impl<'a> ProbeEpoch<'a> {
     }
 }
 
-fn query_device_number(handle: &OwnedHandle) -> Result<u32, MetadataError> {
+fn query_device_number(handle: &RegisteredDeviceHandle) -> Result<u32, MetadataError> {
     parse_device_number(&ioctl(handle, IOCTL_STORAGE_GET_DEVICE_NUMBER, &[], 12)?)
 }
 
@@ -520,7 +591,7 @@ fn query_one(path: &[u16], epoch: &ProbeEpoch<'_>) -> ProbeOutcome {
     let result = (|| {
         // Check both before and after CreateFileW: an event racing with open
         // must invalidate the new handle before any metadata IOCTL begins.
-        let handle = epoch.run(|| open_agent_discovered_path(path))?;
+        let handle = epoch.run(|| open_agent_discovered_path(path, epoch.generation))?;
         let before = epoch.run(|| query_device_number(&handle))?;
         let capacity_bytes = epoch.run(|| {
             ioctl(&handle, IOCTL_DISK_GET_LENGTH_INFO, &[], 8).and_then(|b| parse_disk_length(&b))
@@ -562,13 +633,19 @@ fn query_one(path: &[u16], epoch: &ProbeEpoch<'_>) -> ProbeOutcome {
         let after = epoch.run(|| query_device_number(&handle))?;
         validate_number_stable(before, after)?;
         epoch.ensure_current()?;
-        Ok(DiskMetadata {
+        let metadata = DiskMetadata {
             device_number: before,
             capacity_bytes,
             sectors,
             bus_type,
             partition_layout,
-        })
+        };
+        // Unregister handle notifications off-callback, then close the handle.
+        // A callback racing unregister invalidates the epoch and is observed
+        // by the final check below.
+        handle.finish()?;
+        epoch.ensure_current()?;
+        Ok(metadata)
     })();
     match result {
         Ok(metadata) => ProbeOutcome::Ready(metadata),
