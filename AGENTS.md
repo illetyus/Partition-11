@@ -1,23 +1,24 @@
 # Partition 11 — Agent / future-session instructions
 
-## LATEST MERGED CHECKPOINT — P2.5B.2 write workload bounds (2026-10-19)
+## LATEST MERGED CHECKPOINT — P2.5B.3 partition protection metadata (2026-10-19)
 
-- PR #50 merged as `b1dfe8ddcc0d68dbc8880585b16b884b9d446863` after 5/5 PR
-  checks. Fresh `main` passed CI, Windows UI, and DiskSpd XML checks 3/3:
-  [CI](https://github.com/illetyus/Partition-11/actions/runs/39304667854),
-  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39304667866),
-  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39304667878).
-- P2.5B.2 adds a write-only DiskSpd rate cap and conservative byte estimate
-  to the internal workload planner. It does not enable a production worker,
-  live volume selection, or writes.
-- Current local branch: `feature/p2.5-protected-partition-types`. It preserves
-  MBR/GPT partition classes through metadata worker protocol v2 so later
-  volume policy can conservatively reject boot/recovery classes. This is not
-  complete system-volume detection or volume authorization; PR/CI remain open.
-- Next, implement trusted volume-to-disk mapping and fail-closed system/boot,
-  filesystem, identity, reparse-point, and free-space checks before scratch
-  file creation, write consent, or a production worker. Never expose live
-  benchmark launch until all gates pass.
+- PR #51 merged as `eb2d932abdb492a040232fbbc3bc81ae558ce467` after 5/5 PR
+  checks. Fresh `main` at that SHA passed CI, Windows UI, and DiskSpd XML
+  checks 3/3:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39309441359),
+  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39309441521),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39309441451).
+- The parser and metadata worker protocol v2 retain MBR active/type and GPT
+  partition type information for later benchmark protection policy. PR #50's
+  bounded write rate and conservative byte estimate remain internal planning
+  primitives; no benchmark process or volume write is enabled.
+- Next implementation branch: `feature/p2.5-volume-eligibility-policy` from
+  the verified `main`. Implement trusted volume-to-partition mapping and
+  fail-closed system/boot/recovery, filesystem, identity, mount, and free-space
+  eligibility before scratch file creation, write consent, or a worker.
+- Never enable a live benchmark until all P2.5 gates pass. Physical Windows
+  11 device acceptance remains the user's test gate; do not simulate it with a
+  hosted VM result.
 - PR #49 added the bounded metadata-only physical disk inventory endpoint;
   it does not expose raw sectors, serials, or durable device IDs. Physical
   Windows 11 USB/NVMe/SATA/BitLocker/sector-size acceptance remains the user's
