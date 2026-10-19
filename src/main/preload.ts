@@ -9,13 +9,15 @@ const CHANNELS = Object.freeze({
   displayInfo: "partition11:display-info",
   displayChanged: "partition11:display-changed",
   titlebarTheme: "partition11:titlebar-theme",
-  benchmarkAvailability: "partition11:benchmark-availability"
+  benchmarkAvailability: "partition11:benchmark-availability",
+  readOnlyDiskInventory: "partition11:read-only-disk-inventory"
 });
 
 const api: Partition11Bridge = Object.freeze({
   getStatus: () => ipcRenderer.invoke(CHANNELS.status),
   getDisplayInfo: () => ipcRenderer.invoke(CHANNELS.displayInfo),
   getBenchmarkAvailability: () => ipcRenderer.invoke(CHANNELS.benchmarkAvailability),
+  getReadOnlyDiskInventory: () => ipcRenderer.invoke(CHANNELS.readOnlyDiskInventory),
   setTitlebarTheme: (theme: "light" | "dark") => ipcRenderer.invoke(CHANNELS.titlebarTheme, theme),
   onDisplayChanged(listener: () => void) {
     const handler = () => listener();

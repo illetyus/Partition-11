@@ -1,4 +1,5 @@
 import path from "node:path";
+import { existsSync } from "node:fs";
 import {
   app, BrowserWindow, ipcMain, nativeTheme, screen, session,
   type IpcMainInvokeEvent
@@ -6,9 +7,19 @@ import {
 import { IPC, type AppStatus, type DisplayInfo } from "../shared/protocol";
 import { BENCHMARK_PREVIEW_AVAILABILITY } from "../shared/benchmark";
 import { isAllowedFrame } from "./ipc-policy";
+import { ReadOnlyDiskInventoryService } from "./readOnlyDiskInventory";
 
 const developmentUrl = process.env.PARTITION11_DEV_URL;
 const packagedHtmlPath = path.resolve(__dirname, "../../renderer/index.html");
+
+function agentExecutablePath(): string {
+  const root = app.isPackaged ? process.resourcesPath : app.getAppPath();
+  return app.isPackaged
+    ? path.join(root, "agent", "partition11-agent.exe")
+    : path.join(root, "resources", "agent", "partition11-agent.exe");
+}
+
+const inventoryService = new ReadOnlyDiskInventoryService(agentExecutablePath());
 
 let mainWindow: BrowserWindow | undefined;
 
@@ -33,7 +44,7 @@ function currentStatus(): AppStatus {
     agentConnected: false,
     capabilities: {
       inspectImages: false,
-      inspectPhysicalDisks: false,
+      inspectPhysicalDisks: process.platform === "win32" && existsSync(agentExecutablePath()),
       writeImages: false,
       writePhysicalDisks: false
     }
@@ -145,6 +156,14 @@ app.whenReady().then(() => {
   ipcMain.handle(IPC.BENCHMARK_AVAILABILITY, event => {
     if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
     return BENCHMARK_PREVIEW_AVAILABILITY;
+  });
+  ipcMain.handle(IPC.READ_ONLY_DISK_INVENTORY, (event, ...args: unknown[]) => {
+    if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
+    if (args.length !== 0) throw new Error("Unexpected inventory arguments");
+    if (process.platform !== "win32") {
+      return { protocolVersion: 1, status: "error", error: "agent_unavailable" } as const;
+    }
+    return inventoryService.scan();
   });
   ipcMain.handle(IPC.TITLEBAR_THEME, (event, theme: unknown) => {
     if (!trustedRequest(event)) throw new Error("Unauthorized IPC origin");
