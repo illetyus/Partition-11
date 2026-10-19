@@ -1,9 +1,7 @@
-//! Non-elevated diagnostic agent, not wired to Electron or IPC.
-//! P2-I2a enumerates present Windows disk interfaces using SetupAPI.
-//! P2-I2b provides a separate, non-elevated, metadata-only diagnostic; it
-//! opens GENERIC_READ handles, queries bounded drive-layout metadata, but
-//! never reads raw sectors or writes to disks.
-//! All Electron/runtime capabilities remain false.
+//! Non-elevated agent with a bounded, sanitized stdin/stdout inventory protocol
+//! consumed by Electron. It queries Windows disk metadata through GENERIC_READ
+//! handles but never reads raw sectors or writes to disks.
+//! No image or physical-disk write capability is enabled.
 #![deny(unsafe_code)]
 
 // Win32 FFI has its own reviewed and bounded safety boundary. Do not add
@@ -34,6 +32,22 @@ mod pnp_notifications;
 mod scan_identity;
 
 use partition11_core::PHASE_0_CAPABILITIES;
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+const INVENTORY_HARD_DEADLINE: Duration = Duration::from_secs(32);
+
+fn spawn_hard_deadline(
+    timeout: Duration,
+    on_expire: impl FnOnce() + Send + 'static,
+) -> std::io::Result<JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name("p11-inventory-deadline".into())
+        .spawn(move || {
+            std::thread::sleep(timeout);
+            on_expire();
+        })
+}
 
 fn main() {
     match (std::env::args().nth(1).as_deref(), std::env::args().nth(2)) {
@@ -126,6 +140,10 @@ fn main() {
         #[cfg(windows)]
         (Some("inventory"), None) => {
             use std::io::{self, Write};
+            let _hard_deadline = spawn_hard_deadline(INVENTORY_HARD_DEADLINE, || {
+                std::process::exit(124);
+            })
+            .unwrap_or_else(|_| std::process::exit(3));
             let request = match inventory_protocol::read_request(&mut io::stdin().lock()) {
                 Ok(request) => request,
                 Err(_) => std::process::exit(2),
@@ -160,5 +178,25 @@ fn main() {
             eprintln!("Partition 11 agent: bounded diagnostics and one-shot read-only inventory only. No disk writes exist.");
             std::process::exit(2);
         }
+    }
+}
+
+#[cfg(test)]
+mod hard_deadline_tests {
+    use super::spawn_hard_deadline;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn hard_deadline_fires_independently_of_the_inventory_call() {
+        let (sender, receiver) = mpsc::channel();
+        let _deadline = spawn_hard_deadline(Duration::from_millis(10), move || {
+            let _ = sender.send(());
+        })
+        .expect("deadline thread should start");
+
+        receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("deadline callback should fire without caller cooperation");
     }
 }

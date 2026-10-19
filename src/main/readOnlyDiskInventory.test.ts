@@ -42,7 +42,10 @@ class FakeChild extends EventEmitter {
   readonly stdout = new PassThrough();
   killed = false;
 
-  constructor(onRequest?: (request: Record<string, unknown>, child: FakeChild) => void) {
+  constructor(
+    onRequest?: (request: Record<string, unknown>, child: FakeChild) => void,
+    private readonly onKill?: (child: FakeChild) => void
+  ) {
     super();
     let input = "";
     this.stdin.setEncoding("utf8");
@@ -55,6 +58,7 @@ class FakeChild extends EventEmitter {
 
   kill(): boolean {
     this.killed = true;
+    this.onKill?.(this);
     return true;
   }
 }
@@ -78,10 +82,63 @@ test("timeout kills the one-shot agent and discards any later output", async () 
   const service = new ReadOnlyDiskInventoryService("agent.exe", {
     exists: () => true,
     timeoutMs: 10,
-    spawn: () => { child = new FakeChild(); return asChild(child); }
+    spawn: () => {
+      child = new FakeChild(undefined, process => {
+        setImmediate(() => process.emit("close", null, "SIGTERM"));
+      });
+      return asChild(child);
+    }
   });
   assert.deepEqual(await service.scan(), { protocolVersion: 1, status: "error", error: "timeout" });
   assert.equal(child?.killed, true);
+});
+
+test("agent hard-deadline exit is reported as a timeout", async () => {
+  const child = new FakeChild();
+  const service = new ReadOnlyDiskInventoryService("agent.exe", {
+    exists: () => true,
+    spawn: () => {
+      setImmediate(() => child.emit("close", 124, null));
+      return asChild(child);
+    }
+  });
+  assert.deepEqual(await service.scan(), { protocolVersion: 1, status: "error", error: "timeout" });
+});
+
+test("timeout keeps the inventory slot occupied until the killed child closes", async () => {
+  let starts = 0;
+  const children: FakeChild[] = [];
+  const service = new ReadOnlyDiskInventoryService("agent.exe", {
+    exists: () => true,
+    timeoutMs: 10,
+    spawn: () => {
+      starts += 1;
+      const child = new FakeChild();
+      children.push(child);
+      return asChild(child);
+    }
+  });
+  const first = service.scan();
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const second = service.scan();
+  const startsBeforeClose = starts;
+  for (const child of children) child.emit("close", null, "SIGTERM");
+  await Promise.all([first, second]);
+  assert.equal(second, first);
+  assert.equal(startsBeforeClose, 1);
+});
+
+test("stdin pipe errors kill the agent and resolve as a safe failure", async () => {
+  const child = new FakeChild();
+  const service = new ReadOnlyDiskInventoryService("agent.exe", {
+    exists: () => true,
+    spawn: () => asChild(child)
+  });
+  const scan = service.scan();
+  child.stdin.emit("error", Object.assign(new Error("broken pipe"), { code: "EPIPE" }));
+  assert.equal(child.killed, true);
+  child.emit("close", null, "SIGTERM");
+  assert.deepEqual(await scan, { protocolVersion: 1, status: "error", error: "agent_unavailable" });
 });
 
 test("only one inventory process runs at a time and a mismatched request ID is discarded", async () => {

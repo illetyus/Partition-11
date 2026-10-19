@@ -8,6 +8,7 @@ import type {
 } from "../shared/protocol";
 
 const AGENT_TIMEOUT_MS = 35_000;
+const AGENT_HARD_DEADLINE_EXIT_CODE = 124;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_DISKS = 256;
 const BUS_TYPES = new Set([
@@ -127,6 +128,7 @@ function runAgent(
 ): Promise<AgentRunResult> {
   return new Promise(resolve => {
     let settled = false;
+    let pendingResult: AgentRunResult | undefined;
     let size = 0;
     const chunks: Buffer[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -136,6 +138,11 @@ function runAgent(
       settled = true;
       if (timer) clearTimeout(timer);
       resolve(result);
+    };
+    const stopAndReap = (result: AgentRunResult) => {
+      if (pendingResult || settled) return;
+      pendingResult = result;
+      child.kill();
     };
     try {
       child = spawnProcess(executable, ["inventory"], {
@@ -153,33 +160,47 @@ function runAgent(
       return;
     }
     timer = setTimeout(() => {
-      child.kill();
-      finish({ kind: "timeout" });
+      stopAndReap({ kind: "timeout" });
     }, timeoutMs);
     child.stdout.on("data", (chunk: Buffer | string) => {
+      if (pendingResult) return;
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       size += bytes.length;
       if (size > MAX_RESPONSE_BYTES) {
-        child.kill();
-        finish({ kind: "oversize" });
+        stopAndReap({ kind: "oversize" });
       } else {
         chunks.push(bytes);
       }
     });
-    child.once("error", () => finish({ kind: "spawn-error" }));
+    child.once("error", () => {
+      if (!pendingResult) pendingResult = { kind: "spawn-error" };
+    });
     child.once("close", code => {
       if (settled) return;
+      if (pendingResult) {
+        finish(pendingResult);
+        return;
+      }
+      if (code === AGENT_HARD_DEADLINE_EXIT_CODE) {
+        finish({ kind: "timeout" });
+        return;
+      }
       if (code !== 0) {
         finish({ kind: "exit-error" });
         return;
       }
       finish({ kind: "response", value: readOneJsonLine(chunks) });
     });
-    child.stdin.end(JSON.stringify({
-      protocolVersion: 1,
-      requestId,
-      operation: "inspectPhysicalDisks"
-    }) + "\n");
+    child.stdin.once("error", () => stopAndReap({ kind: "spawn-error" }));
+    try {
+      child.stdin.end(JSON.stringify({
+        protocolVersion: 1,
+        requestId,
+        operation: "inspectPhysicalDisks"
+      }) + "\n");
+    } catch {
+      stopAndReap({ kind: "spawn-error" });
+    }
   });
 }
 
