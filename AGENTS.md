@@ -80,7 +80,7 @@
   and write flags remain false, no raw sector reads or writes, no format/UAC.
 
 
-## CURRENT CHECKPOINT — P2-I2c-3 scan-generation primitive MERGED
+## PREVIOUS CHECKPOINT — P2-I2c-3 scan-generation primitive MERGED
 
 [PR #37](https://github.com/illetyus/Partition-11/pull/37) merged into
 `main` as `fd920434101ce5b7797caced9d0c451caf86dc2e` after
@@ -91,23 +91,25 @@ their private generation once a scan completes. Tests cover cancelled old
 snapshots, multiple observers and guard isolation. Only a test-only
 convenience constructor is excluded from production lint scope.
 
-**This is a cancellation primitive, NOT event-driven hotplug handling:**
-the current guard is created per invocation; Windows device-change
-notifications do not yet invalidate a shared guard. Same-path/instance-ID
-rapid unplug/replug and durable physical identity remain unaddressed.
-No Electron IPC, raw sectors, write, formatting, mount, UAC or physical
-Windows 11 device acceptance. All disk capability flags remain false.
+**Historical note:** this checkpoint described PR #37 before later work.
+PR #39 added Windows PnP event invalidation, PR #43 added per-HANDLE
+query-removal lifecycle handling, and PR #46 added bounded cancellable
+metadata I/O in a disposable worker. This section no longer defines the
+current next step. Remaining gates are durable hardware identity, physical
+Windows 11 device acceptance, and authenticated read-only IPC/UI; see the
+latest checkpoint above and [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
 
 Post-merge `main` CI for that SHA (CHECK FINAL STATUS before claiming success):
 [CI](https://github.com/illetyus/Partition-11/actions/runs/39144208924),
 [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39144208918),
 [DiskSpd XML](https://github.com/illetyus/Partition-11/actions/runs/39144208949).
 
-**NEXT:** [P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31),
-wire safe Windows PnP notifications to a truly shared agent generation,
-evaluate reliable hardware identity, reject fast replug races, test
-physical NVMe/SATA/USB Windows 11 acceptance. Preserve 5/5 PR gates,
-merge to main, verify new main checks and update this handoff.
+At this historical checkpoint, the next work was to connect Windows PnP
+notifications to a shared agent generation; that work landed in PR #39.
+Per-HANDLE removal handling and bounded in-flight I/O cancellation later
+landed in PRs #43 and #46. Current remaining work is durable hardware
+identity, physical Windows 11 acceptance, and authenticated read-only IPC/UI.
+Preserve the disabled disk capability flags until those gates are accepted.
 
 ---
 

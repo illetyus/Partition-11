@@ -273,15 +273,18 @@ remains open for Windows PnP identity, cancel/invalidate/hotplug and
 hardware acceptance. All Electron disk access and write capabilities remain
 disabled.
 
-## Current gate after P2-I2b Windows SDK ABI validation
+## Previous checkpoint after P2-I2b Windows SDK ABI validation
 
 - [PR #30](https://github.com/illetyus/Partition-11/pull/30) merged:
   independent MSVC + Windows SDK C11 compile-time ABI checks on Windows CI,
   including the exact parser offsets and GET-only disk-layout IOCTL;
   Windows fixture filename collisions were also fixed.
-- [Next issue #31](https://github.com/illetyus/Partition-11/issues/31):
-  agent-private disk identity snapshots, replug/surprise-removal invalidation
-  and physical-device tests. These remain **incomplete**.
+- At this historical checkpoint, [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+  was next. PnP invalidation, per-HANDLE removal handling and bounded
+  cancellable metadata I/O later landed in PRs #39, #43 and #46.
+- Current remaining gates in Issue #31: durable hardware identity,
+  physical Windows 11 USB/NVMe/SATA/BitLocker/512e/4Kn acceptance, and
+  authenticated read-only IPC/UI. These remain **incomplete**.
 - UI disk access, writing, formatting, mounting and elevation remain disabled.
 
 ## Continue from the latest handoff
