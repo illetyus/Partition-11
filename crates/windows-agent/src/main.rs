@@ -14,6 +14,8 @@ mod disk_discovery;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod disk_metadata;
+#[cfg(test)]
+mod metadata_worker_protocol;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod pnp_notifications;
