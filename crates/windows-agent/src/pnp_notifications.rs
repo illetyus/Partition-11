@@ -2,8 +2,10 @@
 //!
 //! Register before SetupAPI enumeration, invalidate the *same* atomic
 //! generation observed by this diagnostic scan when Windows announces a
-//! disk-interface arrival/removal. The callback performs one atomic write:
-//! NO disk operations, blocking calls, allocation, logging or IPC.
+//! disk-interface arrival/removal. That interface-class callback performs
+//! one atomic invalidation only: no disk I/O, blocking calls, allocation,
+//! logging or IPC. The separate per-HANDLE callback may call CloseHandle as
+//! required by Windows, but never performs disk I/O or takes a blocking lock.
 //!
 //! The scan also registers each successfully opened device HANDLE for
 //! query-remove notifications. Idle handles are closed in the callback as
@@ -640,6 +642,60 @@ mod tests {
                 0,
             ),
             ERROR_CANCELLED
+        );
+        assert_eq!(lease.raw_handle(), 0x1234);
+        drop(lease);
+        state.finish_io();
+        assert!(!state.has_open_handle());
+    }
+
+    #[test]
+    fn remove_pending_closes_idle_handle_without_veto() {
+        let generation = ScanGeneration::default();
+        let state = DeviceHandleState::for_test(0x1234);
+        let context = Box::new(DeviceHandleContext::for_test(
+            generation,
+            state.clone(),
+        ));
+        let pointer = (&*context as *const DeviceHandleContext)
+            .cast_mut()
+            .cast::<c_void>();
+
+        assert_eq!(
+            on_device_handle_change(
+                ptr::null_mut(),
+                pointer,
+                CM_NOTIFY_ACTION_DEVICEREMOVEPENDING,
+                ptr::null(),
+                0,
+            ),
+            CR_SUCCESS
+        );
+        assert!(!state.has_open_handle());
+    }
+
+    #[test]
+    fn remove_complete_during_busy_io_defers_close_without_veto() {
+        let generation = ScanGeneration::default();
+        let state = DeviceHandleState::for_test(0x1234);
+        let lease = state.begin_io().expect("test handle lease");
+        let context = Box::new(DeviceHandleContext::for_test(
+            generation,
+            state.clone(),
+        ));
+        let pointer = (&*context as *const DeviceHandleContext)
+            .cast_mut()
+            .cast::<c_void>();
+
+        assert_eq!(
+            on_device_handle_change(
+                ptr::null_mut(),
+                pointer,
+                CM_NOTIFY_ACTION_DEVICEREMOVECOMPLETE,
+                ptr::null(),
+                0,
+            ),
+            CR_SUCCESS
         );
         assert_eq!(lease.raw_handle(), 0x1234);
         drop(lease);
