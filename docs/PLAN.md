@@ -45,15 +45,12 @@ unsupported filesystem/drive types, read-only volumes and less than 2 GiB
 free space. The 2-GiB floor allows the proposed 1-GiB scratch file plus a
 1-GiB reserve.
 
-Validation so far: 94 Rust agent tests passed (the one live inventory test was
-deliberately skipped), workspace Clippy passed, Windows x64 release agent
-build passed, TypeScript typecheck passed, main-process tests passed 42/42,
-production Electron build passed, and Windows UI smoke passed with 45
-assertions, 11 screenshots and no errors. The smoke bridge uses static mock
-data and confirms launch never starts a physical disk query. Physical-device
-acceptance was not run. A real Windows 11 volume scan and user acceptance
-remain pending; benchmark launch and all writes remain disabled. No PR or
-merge has been made for this local checkpoint.
+Validation: 94 Rust agent tests passed (the live inventory probe was skipped), workspace Clippy and Windows x64 release agent build passed, TypeScript checks passed, main tests passed 42/42, production Electron build passed, and UI smoke passed with 45 assertions and 11 screenshots. The smoke used static mock data and verified launch does not query physical disks.
+
+An unsigned, unpacked x64 test candidate was packaged from commit 3ee9d47 on Windows 11 IoT Enterprise LTSC build 26100 (64-bit): release/Partition-11-Windows-x64-p2.5b4-3ee9d47.zip. SHA-256: B082517313B3CAD64AE43EC8CD2F88BD8DAAB4A004C9DFBC2C5E749612C93A95. ZIP CRC test passed for all 73 entries. App EXE SHA-256: 8D648AEEB305CC6D7876781B52BB02224F863F47E72D443FFC95431A6416580E; agent SHA-256: D2C434D941B7340A14A79958ED8D58F221436B718A43A1F63904CCA37CEDC9F7; app.asar SHA-256: C0EB45D86C62D6DB2C831109073EA6A55EA9796A9A38A892BB68C7BCEE46B2A1. Local packaging used Node 24.22.0, while CI pins 24.21.0; the candidate is not a reproducible release. Its agent reports image/physical inspection and all write capabilities false.
+
+No live inventory or physical-device acceptance was run. The user will perform physical Windows 11 acceptance. Benchmark launch and disk writes remain disabled. No PR or merge has been made for this local checkpoint.
+
 
 Primary API references: [volume direct-access requirements](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew),
 [logical disk to partition association](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-logicaldisktopartition),

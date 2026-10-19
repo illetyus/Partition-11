@@ -14,6 +14,8 @@ belgeliyor, uygulama ise elevation reddediyor.
 
 Doğrulama: Rust agent **94 test geçti**, bir gerçek envanter testi bilerek atlandı; workspace Clippy ve x64 Windows release agent build geçti; TypeScript typecheck, production Electron build ve main-process testleri (**42/42**) geçti. Windows UI smoke **45 assertion, 11 screenshot, 0 hata** ile geçti; yalnız statik mock disk/volume kullanıyor ve açılışta gerçek tarama olmadığını doğruluyor. Fiziksel Windows 11 kabul testi çalıştırılmadı; bunu kullanıcı yapacak.
 
+Güncel yerel test adayı: release/Partition-11-Windows-x64-p2.5b4-3ee9d47.zip (SHA-256 B082517313B3CAD64AE43EC8CD2F88BD8DAAB4A004C9DFBC2C5E749612C93A95), unsigned/unpacked x64. Paket, Windows 11 IoT Enterprise LTSC build 26100 x64 üzerinde oluşturuldu; ZIP CRC kontrolü 73/73 girdi için geçti. Node 24.22.0 kullanıldı (CI pin'i 24.21.0), dolayısıyla üretilebilirlik kanıtı değil. Agent capability çıktısı image/physical inspect ve tüm write flags için false. Gerçek volume taraması yapılmadı.
+
 Son incelemede bloklayıcı kusur bulunmadı. Çalışma dalı yerel; PR ve GitHub CI henüz yok.
 
 Sıradaki adım: PR açıp zorunlu CI kontrollerini tamamlamak. Kontroller yeşil olduktan sonra merge için kullanıcı onayı alınacak. Kalan P2.5 kapıları: sahipliği doğrulanan scratch dosyası, sabitlenmiş DiskSpd, açık kullanıcı onayı, tam süreç ağacı iptali ve metrik doğrulaması. Fiziksel Windows 11 testi kullanıcıya ait.
