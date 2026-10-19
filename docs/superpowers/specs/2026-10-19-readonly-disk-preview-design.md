@@ -1,6 +1,6 @@
 # Salt okunur fiziksel disk önizlemesi — tasarım
 
-Durum: Kullanıcı incelemesi için öneri
+Durum: Kullanıcı onayladı (2026-10-19); yerel uygulama ve test adayı hazır, CI ve fiziksel kabul bekliyor
 Tarih: 2026-10-19
 Hedef: Kullanıcının Windows 11 fiziksel cihaz kabul testinden önce, gerçek diskleri yalnızca listeleyen bir test paketi hazırlamak.
 
