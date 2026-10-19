@@ -15,6 +15,8 @@ mod disk_discovery;
 #[allow(unsafe_code)]
 mod disk_metadata;
 #[cfg(windows)]
+mod inventory_protocol;
+#[cfg(windows)]
 #[allow(unsafe_code)]
 mod metadata_query;
 #[cfg(windows)]
@@ -121,8 +123,41 @@ fn main() {
                 }
             }
         }
+        #[cfg(windows)]
+        (Some("inventory"), None) => {
+            use std::io::{self, Write};
+            let request = match inventory_protocol::read_request(&mut io::stdin().lock()) {
+                Ok(request) => request,
+                Err(_) => std::process::exit(2),
+            };
+            let response = match disk_metadata::inspect_discovered_devices_with_timeout(
+                std::time::Duration::from_secs(30),
+            ) {
+                Ok(disks) => inventory_protocol::encode_success(&request, &disks),
+                Err(disk_metadata::ScanError::TimedOut) => {
+                    Ok(inventory_protocol::encode_failure(&request, "scan_timeout"))
+                }
+                Err(disk_metadata::ScanError::Security(
+                    disk_metadata::MetadataError::AccessDenied,
+                )) => Ok(inventory_protocol::encode_failure(
+                    &request,
+                    "access_denied",
+                )),
+                Err(_) => Ok(inventory_protocol::encode_failure(
+                    &request,
+                    "agent_failure",
+                )),
+            };
+            let Ok(response) = response else {
+                std::process::exit(3);
+            };
+            if inventory_protocol::write_response(&mut io::stdout().lock(), &response).is_err() {
+                std::process::exit(3);
+            }
+            let _ = io::stdout().flush();
+        }
         _ => {
-            eprintln!("Partition 11 agent: 'capabilities', and on Windows 'discovery-count' / 'metadata-summary' diagnostics only. No GUI disk access or disk writes exist.");
+            eprintln!("Partition 11 agent: bounded diagnostics and one-shot read-only inventory only. No disk writes exist.");
             std::process::exit(2);
         }
     }

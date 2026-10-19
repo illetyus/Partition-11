@@ -213,11 +213,13 @@ fn worker_outcome_after_wait(
         return ProbeOutcome::Unavailable(MetadataError::IdentityChanged);
     }
     match wait_result {
+        Ok(status) if status.code() == Some(124) => {
+            ProbeOutcome::Unavailable(MetadataError::TimedOut)
+        }
         Ok(status) => decode_worker_result(status.success(), bytes, is_current),
         Err(WatchError::Invalidated) => ProbeOutcome::Unavailable(MetadataError::IdentityChanged),
-        Err(WatchError::TimedOut | WatchError::Process) => {
-            ProbeOutcome::Unavailable(MetadataError::WorkerFailed)
-        }
+        Err(WatchError::TimedOut) => ProbeOutcome::Unavailable(MetadataError::TimedOut),
+        Err(WatchError::Process) => ProbeOutcome::Unavailable(MetadataError::WorkerFailed),
     }
 }
 
@@ -444,10 +446,11 @@ fn receive_worker_io(
     }
 }
 
-pub(crate) fn probe_via_worker(
+pub(crate) fn probe_via_worker_with_timeout(
     record: &DiskInterface,
     generation: &ScanGeneration,
     expected_revision: u64,
+    timeout: Duration,
 ) -> ProbeOutcome {
     let _serial = worker_serial_guard();
     let unavailable = |error| ProbeOutcome::Unavailable(error);
@@ -473,7 +476,7 @@ pub(crate) fn probe_via_worker(
     let current = || generation_is_current(generation, expected_revision);
     let status = wait_for_child(
         &mut child,
-        WORKER_DEADLINE,
+        WORKER_DEADLINE.min(timeout),
         || started.elapsed(),
         thread::sleep,
         current,
@@ -485,7 +488,13 @@ pub(crate) fn probe_via_worker(
             return worker_outcome_after_wait(Err(error), &[], current);
         }
     };
-    let io_result = receive_worker_io(&writer_rx, &reader_rx, WORKER_DEADLINE, started, current);
+    let io_result = receive_worker_io(
+        &writer_rx,
+        &reader_rx,
+        WORKER_DEADLINE.min(timeout),
+        started,
+        current,
+    );
     let (_, bytes) = match io_result {
         Ok(result) => result,
         Err(error) => {
@@ -532,6 +541,10 @@ mod tests {
 
     fn status(success: bool) -> ExitStatus {
         ExitStatus::from_raw(if success { 0 } else { 1 })
+    }
+
+    fn status_with_code(code: u32) -> ExitStatus {
+        ExitStatus::from_raw(code)
     }
 
     fn test_request() -> WorkerRequest {
@@ -691,7 +704,15 @@ mod tests {
         let bytes = encode_reply(&reply).unwrap();
         assert!(matches!(
             worker_outcome_after_wait(Err(WatchError::TimedOut), &bytes, || true),
-            ProbeOutcome::Unavailable(MetadataError::WorkerFailed)
+            ProbeOutcome::Unavailable(MetadataError::TimedOut)
+        ));
+    }
+
+    #[test]
+    fn worker_self_deadline_exit_is_reported_as_timeout() {
+        assert!(matches!(
+            worker_outcome_after_wait(Ok(status_with_code(124)), &[], || true),
+            ProbeOutcome::Unavailable(MetadataError::TimedOut)
         ));
     }
 
@@ -766,7 +787,7 @@ mod tests {
         let captured_output = encode_reply(&reply).unwrap();
         assert!(matches!(
             worker_outcome_after_wait(result, &captured_output, || true),
-            ProbeOutcome::Unavailable(MetadataError::WorkerFailed)
+            ProbeOutcome::Unavailable(MetadataError::TimedOut)
         ));
     }
 
