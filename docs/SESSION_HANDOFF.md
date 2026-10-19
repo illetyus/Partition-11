@@ -877,3 +877,17 @@ ZIP integrity and the hashes of `Partition 11.exe`, `resources/app.asar`, and
 package. It remains a local, unmerged preview; GitHub CI and the user's real
 Windows 11 USB/NVMe/SATA, hotplug, BitLocker and 512e/4Kn acceptance remain
 open.
+
+## 2026-10-19 — pinned Windows x64 candidate
+
+Rebuilt the local P2.5B.4 preview from source commit `3ee9d47` with the CI-pinned
+Node.js 24.21.0 / npm 11.19.0 and Rust 1.99.1 toolchain. The unsigned,
+unpacked x64 candidate is `release/Partition-11-Windows-x64-p2.5b4-f24fabc-node24.21.zip`
+(207,806,797 bytes), SHA-256
+`C08E98102F1F78AB532F41F588E2376FBF2F49CCCA0E81E7695243990D401C79`.
+All 73 ZIP entries passed Python `zipfile.testzip()`. The application EXE is
+x64; the packaged agent `capabilities` command reports physical/image inspection
+and both write capabilities disabled. App, agent and `app.asar` SHA-256 values
+are recorded in `docs/PLAN.md`. No inventory query or physical-device test was
+run. This is an unsigned directory-preview candidate, not a signed installer or
+release; the user's physical Windows 11 acceptance remains pending.
