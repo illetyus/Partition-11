@@ -23,9 +23,12 @@ const MAX_IOCTL_OUTPUT_BYTES: usize = partition11_core::windows_layout::MAX_RESP
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OverlappedIoError {
+    #[cfg(windows)]
     TimedOut,
+    #[cfg(windows)]
     Cancelled,
     MalformedResponse,
+    #[cfg(windows)]
     Win32(u32),
 }
 
@@ -41,6 +44,7 @@ enum BackendCancel {
     #[default]
     Requested,
     NotFound,
+    #[cfg(windows)]
     Failed(u32),
 }
 
@@ -147,7 +151,9 @@ fn coordinate_ioctl(
                     BackendResult::Failed(code) => return IoDecision::Failed(code),
                     BackendResult::Pending => {}
                 },
-                BackendCancel::Requested | BackendCancel::Failed(_) => {}
+                BackendCancel::Requested => {}
+                #[cfg(windows)]
+                BackendCancel::Failed(_) => {}
             }
             cancel_deadline = Some(backend.now_ms().saturating_add(u64::from(CANCEL_GRACE_MS)));
             continue;
