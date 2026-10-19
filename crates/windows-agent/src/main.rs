@@ -14,8 +14,18 @@ mod disk_discovery;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod disk_metadata;
-#[cfg(test)]
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod metadata_query;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod metadata_worker;
+#[cfg(any(windows, test))]
 mod metadata_worker_protocol;
+#[cfg(any(windows, test))]
+#[allow(unsafe_code)]
+#[allow(dead_code)]
+mod overlapped_ioctl;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod pnp_notifications;
@@ -46,6 +56,13 @@ fn main() {
                     eprintln!("Windows read-only interface enumeration failed: {err}");
                     std::process::exit(3);
                 }
+            }
+        }
+        #[cfg(windows)]
+        (Some("__metadata-worker"), None) => {
+            let status = metadata_worker::run_stdio_worker();
+            if status != 0 {
+                std::process::exit(status);
             }
         }
         #[cfg(windows)]

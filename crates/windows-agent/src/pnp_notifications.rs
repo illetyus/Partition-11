@@ -9,10 +9,11 @@
 //!
 //! The scan also registers each successfully opened device HANDLE for
 //! query-remove notifications. Idle handles are closed in the callback as
-//! Windows requires. If a synchronous metadata call currently owns a handle,
-//! query-remove is vetoed (ERROR_CANCELLED), the scan is invalidated, and the
-//! handle is closed immediately after that call returns. This deliberately
-//! leaves forced cancellation of a blocked DeviceIoControl to the next phase.
+//! Windows requires. If a metadata call currently owns a handle, query-remove
+//! is vetoed (ERROR_CANCELLED), the scan is invalidated, and an atomic flag
+//! asks the worker to cancel its exact pending overlapped request. The
+//! callback never waits for I/O; the worker drains completion before closing
+//! the handle.
 //!
 //! This is NOT durable hardware identity. Tests on hosted Windows runners do
 //! not simulate real USB hotplug; physical Windows 11 QA is still needed.
@@ -91,6 +92,7 @@ fn native_close_handle(raw_handle: usize) -> bool {
 pub(crate) struct DeviceHandleState {
     handle: Mutex<Option<usize>>,
     close_requested: AtomicBool,
+    active_io_cancel: AtomicBool,
     close_handle: CloseHandleFn,
 }
 
@@ -112,6 +114,7 @@ impl DeviceHandleState {
         Arc::new(Self {
             handle: Mutex::new(Some(raw_handle)),
             close_requested: AtomicBool::new(false),
+            active_io_cancel: AtomicBool::new(false),
             close_handle: native_close_handle,
         })
     }
@@ -121,16 +124,28 @@ impl DeviceHandleState {
         Arc::new(Self {
             handle: Mutex::new(Some(raw_handle)),
             close_requested: AtomicBool::new(false),
+            active_io_cancel: AtomicBool::new(false),
             close_handle: |_| true,
         })
     }
 
     pub(crate) fn begin_io(&self) -> Result<DeviceIoLease<'_>, ()> {
+        if self.io_cancel_requested() {
+            return Err(());
+        }
         let guard = self.handle.lock().map_err(|_| ())?;
-        if guard.is_none() {
+        if guard.is_none() || self.io_cancel_requested() {
             return Err(());
         }
         Ok(DeviceIoLease { guard })
+    }
+
+    pub(crate) fn request_io_cancel(&self) {
+        self.active_io_cancel.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn io_cancel_requested(&self) -> bool {
+        self.active_io_cancel.load(Ordering::Acquire)
     }
 
     pub(crate) fn request_close(&self) {
@@ -296,6 +311,7 @@ extern "system" fn on_device_handle_change(
 
     match action {
         CM_NOTIFY_ACTION_DEVICEQUERYREMOVE => {
+            context.state.request_io_cancel();
             // The filter handle must stay valid until CM_Register_Notification
             // itself returns. A callback racing registration therefore vetoes
             // this removal attempt, then the owner closes after registration.
@@ -319,6 +335,7 @@ extern "system" fn on_device_handle_change(
             CR_SUCCESS
         }
         CM_NOTIFY_ACTION_DEVICEREMOVEPENDING | CM_NOTIFY_ACTION_DEVICEREMOVECOMPLETE => {
+            context.state.request_io_cancel();
             context.state.request_close();
             if context.registration_ready.load(Ordering::Acquire) {
                 let _ = context.state.try_close_now();
@@ -617,11 +634,12 @@ mod tests {
             CR_SUCCESS
         );
         assert_eq!(generation.revision(), before + 1);
+        assert!(state.io_cancel_requested());
         assert!(!state.has_open_handle());
     }
 
     #[test]
-    fn busy_query_remove_is_vetoed_then_handle_closes_after_io_releases() {
+    fn busy_query_remove_sets_io_cancel_before_returning_veto() {
         let generation = ScanGeneration::default();
         let state = DeviceHandleState::for_test(0x1234);
         let lease = state.begin_io().expect("test handle lease");
@@ -643,6 +661,7 @@ mod tests {
             ),
             ERROR_CANCELLED
         );
+        assert!(state.io_cancel_requested());
         assert_eq!(lease.raw_handle(), 0x1234);
         drop(lease);
         state.finish_io();
@@ -650,9 +669,10 @@ mod tests {
     }
 
     #[test]
-    fn remove_pending_closes_idle_handle_without_veto() {
+    fn remove_pending_sets_io_cancel_without_blocking_callback() {
         let generation = ScanGeneration::default();
         let state = DeviceHandleState::for_test(0x1234);
+        let lease = state.begin_io().expect("test handle lease");
         let context = Box::new(DeviceHandleContext::for_test(generation, state.clone()));
         let pointer = (&*context as *const DeviceHandleContext)
             .cast_mut()
@@ -668,11 +688,15 @@ mod tests {
             ),
             CR_SUCCESS
         );
+        assert!(state.io_cancel_requested());
+        assert_eq!(lease.raw_handle(), 0x1234);
+        drop(lease);
+        state.finish_io();
         assert!(!state.has_open_handle());
     }
 
     #[test]
-    fn remove_complete_during_busy_io_defers_close_without_veto() {
+    fn remove_complete_sets_io_cancel_without_blocking_callback() {
         let generation = ScanGeneration::default();
         let state = DeviceHandleState::for_test(0x1234);
         let lease = state.begin_io().expect("test handle lease");
@@ -691,6 +715,7 @@ mod tests {
             ),
             CR_SUCCESS
         );
+        assert!(state.io_cancel_requested());
         assert_eq!(lease.raw_handle(), 0x1234);
         drop(lease);
         state.finish_io();
@@ -698,9 +723,10 @@ mod tests {
     }
 
     #[test]
-    fn query_remove_failed_never_resurrects_stale_handle_in_same_scan() {
+    fn query_remove_failed_does_not_clear_cancelled_old_scan() {
         let generation = ScanGeneration::default();
         let state = DeviceHandleState::for_test(0x1234);
+        state.request_io_cancel();
         state.request_close();
         state.finish_io();
         assert!(!state.has_open_handle());
@@ -722,7 +748,15 @@ mod tests {
             ),
             CR_SUCCESS
         );
+        assert!(state.io_cancel_requested());
         assert!(!state.has_open_handle());
+    }
+
+    #[test]
+    fn cancelled_handle_refuses_a_new_io_lease() {
+        let state = DeviceHandleState::for_test(0x1234);
+        state.request_io_cancel();
+        assert!(state.begin_io().is_err());
     }
 
     #[test]

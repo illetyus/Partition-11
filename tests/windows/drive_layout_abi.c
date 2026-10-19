@@ -34,6 +34,16 @@ ABI_CHECK(CM_NOTIFY_ACTION_DEVICEREMOVEPENDING == 4, "remove-pending enum change
 ABI_CHECK(CM_NOTIFY_ACTION_DEVICEREMOVECOMPLETE == 5, "remove-complete enum changed");
 ABI_CHECK(ERROR_CANCELLED == 1223, "query-remove veto Win32 error changed");
 
+/* OVERLAPPED metadata IOCTL request ABI and cancellation result values. */
+ABI_CHECK(sizeof(OVERLAPPED) == 32, "Rust OVERLAPPED x64 size changed");
+ABI_CHECK(offsetof(OVERLAPPED, hEvent) == 24, "Rust OVERLAPPED event offset changed");
+ABI_CHECK(FILE_FLAG_OVERLAPPED == 0x40000000, "overlapped open flag changed");
+ABI_CHECK(ERROR_IO_PENDING == 997, "pending I/O error changed");
+ABI_CHECK(ERROR_IO_INCOMPLETE == 996, "incomplete I/O error changed");
+ABI_CHECK(ERROR_OPERATION_ABORTED == 995, "aborted I/O error changed");
+ABI_CHECK(ERROR_NOT_FOUND == 1168, "CancelIoEx race error changed");
+ABI_CHECK(WAIT_TIMEOUT == 258, "wait timeout result changed");
+
 /* SP_DEVINFO_DATA is used to obtain a PnP instance ID from the same set. */
 ABI_CHECK(sizeof(SP_DEVINFO_DATA) == 32, "Rust DeviceInfoData layout changed");
 ABI_CHECK(offsetof(SP_DEVINFO_DATA, ClassGuid) == 4, "PnP class GUID offset");
