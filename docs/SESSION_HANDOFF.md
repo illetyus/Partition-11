@@ -1,6 +1,37 @@
-# Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-18)
+# Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-19)
 
-## EN YENİ DEVAM NOKTASI — 1. madde tamamlandı: HANDLE kaldırma yaşam döngüsü (19 Ekim 2026)
+## EN YENİ DEVAM NOKTASI — 2. madde tamamlandı: bounded/cancellable metadata I/O (19 Ekim 2026)
+
+[PR #46](https://github.com/illetyus/Partition-11/pull/46) `main` dalına
+`a9cb53344ff560082096d728eb453af0532a7415` SHA'sıyla squash merge edildi.
+PR kontrolleri ve yeni `main` kontrolleri **5/5 başarılı**.
+
+**Tamamlanan 2. madde, kod/CI kapsamında:**
+- Metadata IOCTL'leri ayrı, tek kullanımlık Windows worker sürecinde çalışıyor.
+- Her overlapped istek için 5 saniyelik süre `DeviceIoControl` çağrısından
+  önce başlıyor; timeout/PnP durumunda tam aktif istek `CancelIoEx` ile
+  iptal ediliyor ve 1 saniye tamamlanma aralığı tanınıyor.
+- Worker ve parent bağımsız 20 saniye sınırı koyuyor. Zaman aşımı, iptal,
+  stale nesil/envanter veya bozuk cevap başarı sayılmıyor; takılı child ve
+  pipe thread'leri temizlenene kadar yeni worker başlatılmıyor.
+- Yalnız sabit metadata IOCTL'leri var. Renderer fiziksel disk erişimi,
+  raw sektör, yazma, format, mount, repair, resize ve UAC kapalı.
+
+**Post-merge `main` kanıtı** (`a9cb53344ff560082096d728eb453af0532a7415`):
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39195989162),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39195989210),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39195989174).
+Tasarım ve kabul sınırları: [P2_I2C_BOUNDED_IO.md](P2_I2C_BOUNDED_IO.md).
+
+**Açık kalanlar:** kalıcı donanım kimliği, hızlı çıkar/tak yarışları,
+gerçek Windows 11 USB/NVMe/SATA/BitLocker/512e/4Kn kabulü ve authenticated
+salt-okunur agent IPC/UI. Bunlar [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+içinde açık kalır. Hosted Windows UI smoke ve paketleme fiziksel cihaz kabulü
+değildir.
+
+---
+
+## ÖNCEKİ DEVAM NOKTASI — 1. madde tamamlandı: HANDLE kaldırma yaşam döngüsü (19 Ekim 2026)
 
 [PR #43](https://github.com/illetyus/Partition-11/pull/43) `main` dalına
 `b17e0fbeacd9ee28f7383b5a75a1d7a8198f6a43` olarak birleşti.
@@ -26,16 +57,15 @@ PR ve birleşme sonrası `main` kontrollerinin **5/5'i başarılı**.
 [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39179456177),
 [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39179455971).
 
-**Sıradaki kesin iş = 2. madde:** sürücü içinde bloklanmış senkron
-`DeviceIoControl` çağrısına güvenli iptal/zaman aşımı kazandırmak. PR #43 bunu
-zorla kesmiyor; bu bilinçli sınırdır. Donanım kimliği ve gerçek fiziksel Windows
-11 USB/NVMe/SATA/BitLocker/512e/4Kn testleri sonraki ayrı maddelerdir.
-Electron fiziksel disk erişimi, raw yazma, UAC ve format hâlâ kapalı.
+Bu tarihî checkpoint'te sıradaki iş item 2 idi; item 2 daha sonra PR #46 ile
+tamamlandı. Kalıcı kimlik, fiziksel testler ve authenticated IPC hâlâ açık;
+güncel durum bu dosyanın başında ve [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+içinde tutulur.
 
 ---
 
 
-## EN YENİ DEVAM NOKTASI — P2-I2c sorgu koruması (19 Ekim 2026)
+## ÖNCEKİ DEVAM NOKTASI — P2-I2c sorgu koruması (19 Ekim 2026)
 
 **[PR #41](https://github.com/illetyus/Partition-11/pull/41) main'e birleşti:**
 `6b9f293dea427f598fdc35ed355d9d39f5d6d3dd`.
@@ -71,7 +101,7 @@ CI → Issue ve handoff güncellemesi. Çıplak disk yazma yok.
 ---
 
 
-## EN GÜNCEL MAIN MERGE — Windows PnP disk olay aboneliği (18.10.2026)
+## ÖNCEKİ MAIN MERGE — Windows PnP disk olay aboneliği (18.10.2026)
 
 - [PR #39](https://github.com/illetyus/Partition-11/pull/39), **5/5 PR
   kontrolü başarılı** olarak `main` dalına birleştirildi.
@@ -119,7 +149,7 @@ CI → Issue ve handoff güncellemesi. Çıplak disk yazma yok.
 ---
 
 
-## EN GÜNCEL MERGE — PR #37 / P2-I2c-3 tarama iptal nesli (18.10.2026)
+## ÖNCEKİ MERGE — PR #37 / P2-I2c-3 tarama iptal nesli (18.10.2026)
 
 - [PR #37](https://github.com/illetyus/Partition-11/pull/37)
   **beş başarılı testten sonra `main` dalına birleştirildi.**
@@ -245,7 +275,7 @@ CI → Issue ve handoff güncellemesi. Çıplak disk yazma yok.
 ---
 
 
-## EN GÜNCEL KONTROL NOKTASI — Windows SDK ile bağımsız ABI testi `main` içinde
+## ÖNCEKİ KONTROL NOKTASI — Windows SDK ile bağımsız ABI testi `main` içinde
 
 - **[PR #30](https://github.com/illetyus/Partition-11/pull/30) merge edildi:**
   `df74e420827afd8815dba764b4814664ec7fbf1c`.
@@ -347,7 +377,7 @@ CI → Issue ve handoff güncellemesi. Çıplak disk yazma yok.
 ---
 
 
-## EN GÜNCEL DURUM — P2-I2b bölüm yanıtı çözücü `main` içinde (2026-10-18)
+## ÖNCEKİ DURUM — P2-I2b bölüm yanıtı çözücü `main` içinde (2026-10-18)
 
 - **[PR #26](https://github.com/illetyus/Partition-11/pull/26) merge edildi:** `e74a9d7576b624ac05c05948055a268b3104c6ec`.
 - Birleştirme öncesi GitHub kontrolleri **5/5 başarılı**: Windows/Linux
@@ -396,7 +426,7 @@ CI → Issue ve handoff güncellemesi. Çıplak disk yazma yok.
 
 
 
-## EN YENİ DEVAM NOKTASI — P2-I2b ilk dilim (18 Ekim 2026)
+## ÖNCEKİ DEVAM NOKTASI — P2-I2b ilk dilim (18 Ekim 2026)
 
 **P2-I2b için [PR #24](https://github.com/illetyus/Partition-11/pull/24)
 `main` dalına squash merge edildi:** `3a917865f821f422dffffd04dbdf0549ef0e6ce6`.

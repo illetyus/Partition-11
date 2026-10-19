@@ -1,6 +1,30 @@
 # Partition 11 implementation plan
 
-## Current checkpoint — roadmap item 1 per-HANDLE removal lifecycle complete
+## Current checkpoint — roadmap item 2 bounded metadata I/O complete
+
+[PR #46](https://github.com/illetyus/Partition-11/pull/46) merged to
+`main` as `a9cb53344ff560082096d728eb453af0532a7415` after five passing PR
+checks. The same SHA passed all five fresh post-merge checks:
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39195989162),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39195989210),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39195989174).
+
+Roadmap item **2 is complete at code/CI level**. Windows metadata queries now
+use a disposable worker with 5-second overlapped request budgets, exact
+`CancelIoEx`, a 1-second completion grace, independent 20-second worker and
+parent limits, and post-worker generation/inventory validation. Timed-out,
+cancelled, malformed or stale results are discarded. See
+[P2_I2C_BOUNDED_IO.md](P2_I2C_BOUNDED_IO.md) for behavior and limits.
+
+**Still open in [Issue #31](https://github.com/illetyus/Partition-11/issues/31):**
+durable hardware identity, physical Windows 11 USB/NVMe/SATA/BitLocker/512e/4Kn
+acceptance, and authenticated read-only agent IPC/UI. No renderer disk access,
+raw-sector operations, write, format, mount, repair, resize, or elevation is
+enabled.
+
+---
+
+## Previous checkpoint — roadmap item 1 per-HANDLE removal lifecycle complete
 
 [PR #43](https://github.com/illetyus/Partition-11/pull/43) merged as
 `b17e0fbeacd9ee28f7383b5a75a1d7a8198f6a43` with **5/5 PR checks and
@@ -19,16 +43,14 @@ Post-merge evidence: [CI](https://github.com/illetyus/Partition-11/actions/runs/
 [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39179456177),
 [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39179455971).
 
-**Next roadmap item 2:** design and implement bounded/cancellable synchronous
-Windows metadata I/O. A driver-blocked `DeviceIoControl` can still delay
-query-remove; PR #43 safely vetoes removal rather than closing an in-use HANDLE.
-Strong hardware identity and physical Windows 11 hotplug acceptance remain
-separate later gates. No Electron physical disk capability or writes are enabled.
+At the time of this checkpoint, item 2 was the next task. It is now complete
+through [PR #46](https://github.com/illetyus/Partition-11/pull/46); see the
+current checkpoint above. The hardware and authenticated-IPC gates remain.
 
 ---
 
 
-## Current checkpoint — P2-I2c-5 query-epoch rejection merged
+## Previous checkpoint — P2-I2c-5 query-epoch rejection merged
 
 [PR #41](https://github.com/illetyus/Partition-11/pull/41) merged to
 `main` as `6b9f293dea427f598fdc35ed355d9d39f5d6d3dd` after 5/5 passing
@@ -210,7 +232,8 @@ Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
   further native denial/hotplug tests and physical Windows 11 acceptance
   remain open under [#22](https://github.com/illetyus/Partition-11/issues/22).
   See [metadata design](P2_WINDOWS_DISK_METADATA.md).
-- P2-I2c: stable per-discovery snapshots, hotplug invalidation and agent IPC.
+- P2-I2c: bounded metadata I/O is merged; durable identity, physical hotplug
+  acceptance and authenticated read-only agent IPC remain open in Issue #31.
 - [P2-I2 parent #19](https://github.com/illetyus/Partition-11/issues/19).
 
 ## P2-I2c-2 — Agent-private PnP instance cross-check
