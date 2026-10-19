@@ -1,5 +1,33 @@
 # Partition 11 implementation plan
 
+## Current checkpoint — roadmap item 1 per-HANDLE removal lifecycle complete
+
+[PR #43](https://github.com/illetyus/Partition-11/pull/43) merged as
+`b17e0fbeacd9ee28f7383b5a75a1d7a8198f6a43` with **5/5 PR checks and
+5/5 post-merge `main` checks successful**.
+
+Roadmap item **1 is complete at code/CI level**. Agent-owned metadata HANDLEs
+now receive `CM_NOTIFY_FILTER_TYPE_DEVICEHANDLE` notifications. Query-remove
+closes idle handles, but never closes underneath a synchronous IOCTL; busy
+query-remove is vetoed and close is serviced after the call returns. Pending
+and complete removal actions invalidate the scan and use the same safe
+close/deferred-close state. Query-remove-failed is recovered only through a
+fresh subsequent SetupAPI scan, not by reviving stale state. See
+[P2_I2C_HANDLE_REMOVAL.md](P2_I2C_HANDLE_REMOVAL.md).
+
+Post-merge evidence: [CI](https://github.com/illetyus/Partition-11/actions/runs/39179456003),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39179456177),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39179455971).
+
+**Next roadmap item 2:** design and implement bounded/cancellable synchronous
+Windows metadata I/O. A driver-blocked `DeviceIoControl` can still delay
+query-remove; PR #43 safely vetoes removal rather than closing an in-use HANDLE.
+Strong hardware identity and physical Windows 11 hotplug acceptance remain
+separate later gates. No Electron physical disk capability or writes are enabled.
+
+---
+
+
 ## Current checkpoint — P2-I2c-5 query-epoch rejection merged
 
 [PR #41](https://github.com/illetyus/Partition-11/pull/41) merged to
