@@ -67,7 +67,7 @@ discarded.
 For every metadata IOCTL:
 
 1. Check the worker scan/PnP state before issuing I/O.
-2. Create one completion event and one zero-initialized `OVERLAPPED`.
+2. Create one **manual-reset** completion event and one zero-initialized `OVERLAPPED`; store that event in `OVERLAPPED.hEvent`.
 3. Issue `DeviceIoControl` with that exact `OVERLAPPED`.
 4. If the call completes immediately, validate the byte count and continue.
 5. If it returns `ERROR_IO_PENDING`, wait for completion for at most
@@ -102,13 +102,18 @@ requested.
 On `DEVICEQUERYREMOVE`:
 
 - invalidate the worker's scan state;
-- request cancellation of the active exact `OVERLAPPED`, if any;
-- do not free the request buffers;
+- if no I/O is active, close the HANDLE in the callback and return success;
+- if an overlapped request is active, mark that exact request for
+  `CancelIoEx`, return `ERROR_CANCELLED` without blocking the callback,
+  and let the worker's normal execution path issue cancellation and drain the
+  completion;
+- do not free the request buffers while cancellation is pending;
 - close the device HANDLE only after the active request reaches a terminal
-  completion state;
-- return success only when the HANDLE can be safely released within the
-  callback/lifecycle contract; otherwise fail closed rather than close a
-  HANDLE underneath active kernel I/O.
+  completion state.
+
+The notification callback never performs the 1-second cancellation wait. It
+only changes atomic/request state and, when idle, performs the Windows-required
+HANDLE close. This preserves the no-blocking-callback rule from P2-I2c-6.
 
 `DEVICEQUERYREMOVEFAILED` does not resurrect the old worker. A later parent
 scan re-enumerates and starts a new worker.
