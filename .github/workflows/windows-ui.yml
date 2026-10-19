@@ -19,6 +19,9 @@ jobs:
         with:
           node-version: '24.21.0'
           cache: npm
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable ref snapshot
+        with:
+          toolchain: '1.99.1'
       - name: Install exact locked dependencies and Electron runtime
         run: npm ci --no-audit --no-fund
       - name: Ensure Electron Windows binary is installed
@@ -30,6 +33,8 @@ jobs:
           if (-not (Test-Path "node_modules/electron/dist/electron.exe")) {
             throw "Electron Windows runtime missing"
           }
+      - name: Build read-only Windows disk agent
+        run: npm run build:agent:win
       - name: Build checked TypeScript main, preload and React renderer
         run: npm run build
       - name: Enforce UI and storage capability safety tests
@@ -49,6 +54,11 @@ jobs:
           & ".\node_modules\.bin\electron-builder.cmd" --win dir --x64 --publish never
           if ($LASTEXITCODE -ne 0) { throw "Windows packaging failed" }
           if (-not (Test-Path "release/win-unpacked/Partition 11.exe")) { throw "Packaged executable missing" }
+          $agent = "release/win-unpacked/resources/agent/partition11-agent.exe"
+          if (-not (Test-Path $agent)) { throw "Packaged read-only agent missing" }
+          $capabilities = & $agent capabilities | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Packaged agent capability smoke failed" }
+          if ($capabilities.write_images -ne $false -or $capabilities.write_physical_disks -ne $false) { throw "Packaged agent write capability was not disabled" }
           Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/Partition-11-Windows-x64-preview.zip" -Force
       - name: Upload Electron Windows screenshot evidence
         if: always()

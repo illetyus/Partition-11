@@ -1,4 +1,6 @@
 node_modules/
+resources/agent/
+ui-artifacts/
 dist/
 out/
 release/

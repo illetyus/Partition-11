@@ -7,14 +7,15 @@
   "main": "dist/main/main/main.js",
   "scripts": {
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "test:main": "npm run build:main && node --test dist/main/main/ipc-policy.test.js dist/main/main/preload-contract.test.js dist/main/main/production-csp.test.js dist/main/main/preview-data.test.js dist/main/main/interface-policy.test.js dist/main/main/benchmark-preview.test.js dist/main/main/benchmarkXml.test.js dist/main/main/benchmarkPresentation.test.js dist/main/main/benchmarkPolicy.test.js dist/main/main/desktop-security.test.js",
+    "test:main": "npm run build:main && node --test dist/main/main/ipc-policy.test.js dist/main/main/preload-contract.test.js dist/main/main/production-csp.test.js dist/main/main/preview-data.test.js dist/main/main/interface-policy.test.js dist/main/main/benchmark-preview.test.js dist/main/main/benchmarkXml.test.js dist/main/main/benchmarkPresentation.test.js dist/main/main/benchmarkPolicy.test.js dist/main/main/desktop-security.test.js dist/main/main/readOnlyDiskInventory.test.js",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
     "build": "npm run typecheck && npm run build:main && npm run build:renderer",
+    "build:agent:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-agent-win.ps1",
     "dev": "npm run build:main && concurrently -k \"tsc -p tsconfig.main.json --watch\" \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env PARTITION11_DEV_URL=http://127.0.0.1:5173 electron .\"",
-    "package:win": "npm run build && electron-builder --win nsis",
+    "package:win": "npm run build && npm run build:agent:win && electron-builder --win nsis",
     "test:ui:win": "electron tests/windows-ui-smoke.cjs",
-    "package:win:dir": "npm run build && electron-builder --win dir --x64 --publish never"
+    "package:win:dir": "npm run build && npm run build:agent:win && electron-builder --win dir --x64 --publish never"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.60.0",
@@ -46,6 +47,12 @@
       "dist/**/*",
       "package.json",
       "LICENSE"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/agent/partition11-agent.exe",
+        "to": "agent/partition11-agent.exe"
+      }
     ],
     "win": {
       "target": [
