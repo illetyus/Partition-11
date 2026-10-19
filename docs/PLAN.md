@@ -184,9 +184,9 @@ only after an explicit architecture decision and license review.
 - CrystalDiskMark provides familiar workload/UI references and internally invokes DiskSpd: https://github.com/hiyohiyo/CrystalDiskMark
 - fio (GPLv2) is a differential reference, not a bundled engine: https://github.com/axboe/fio
 - P2.5 specifications and release gates: [P2.5 benchmark plan](P2_5_DISK_BENCHMARK.md) and [ADR-0003](decisions/0003-diskspd-file-targets.md).
-- P2.5A preview UI, disabled typed IPC, strict DiskSpd XML decoding, a pinned read-only CI DiskSpd integration, and P2.5B.1 workload/scratch lease primitives are implemented. No production benchmark launch or disk I/O is enabled.
+- P2.5A preview UI, disabled typed IPC, strict DiskSpd XML decoding, a pinned read-only CI DiskSpd integration, and P2.5B.1 workload/scratch lease primitives are implemented. P2.5B.2 adds a write-only DiskSpd rate ceiling and a conservative maximum-byte estimate; the estimate is not yet connected to user consent or a production worker. No production benchmark launch or disk I/O is enabled.
 
-## Verified phase status (2026-10-18)
+## Verified phase status (2026-10-19)
 
 - **P0**: TypeScript/Rust skeleton, MIT license, threat model, locked dependency
   installs, CycloneDX Node SBOM, and Windows/Linux CI exist. Dependabot PR #13
@@ -197,16 +197,17 @@ only after an explicit architecture decision and license review.
 - **P1**: Approved Windows 11-style mock UI and real-Electron CI screenshot
   tests are present. Packaged Windows 11 desktop testing, physical mixed-DPI,
   Narrator and high-contrast acceptance are NOT complete.
-- **P2**: Bounded, memory-only GPT/MBR parser and **internal** read-only image
-  reader (#17) exist. P2-I2a adds SetupAPI-only discovery of present Windows
-  disk **interfaces**, with bounded Win32 FFI and a local diagnostic count;
-  it does NOT open disk handles, inspect sectors, query capacity/partitions,
-  provide stable device identity or connect to Electron. End-to-end read-only
-  discovery (P2-I2b onward) and physical acceptance remain NOT implemented.
-- **P2.5A / P2.5B.1**: Four mock-only benchmark profiles, a strict XML result
+- **P2**: PR #49 added a bounded, cancellable metadata-only inventory endpoint
+  to the Electron main process. It reports capacity, sector sizes, bus type
+  and partition summary, but no serials, raw sectors or durable device IDs.
+  PR #49 merged at `fdab284f936bf20a5bcecd5b28d4ca200280a4aa`; PR checks were
+  5/5 and post-merge main checks were 3/3. Physical Windows 11 acceptance and
+  stable hardware identity remain open.
+- **P2.5A / P2.5B.1 / P2.5B.2**: Four mock-only benchmark profiles, a strict XML result
   parser, genuine pinned DiskSpd **read-only CI** smoke test, fixed workload
-  planner, and exact-owned scratch-file tests exist. No user-facing benchmark
-  process, production volume authorization, Job Object cancellation or
+  planner with a write-only `-g100000` cap and conservative byte estimate,
+  and exact-owned scratch-file tests exist. No user-facing benchmark process,
+  production volume authorization, Job Object cancellation, consent screen or
   real-device performance reports exist.
 - **P3–P8**: No ext read/write engine is integrated; formatting, mount,
   repair, resize and raw disk writes remain unavailable.

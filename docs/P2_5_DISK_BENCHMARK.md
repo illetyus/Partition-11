@@ -1,6 +1,6 @@
 # P2.5 — Disk Benchmark: literature review and implementation plan
 
-Reviewed: 2026-10-18. State: P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives are implemented for tests. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
+Reviewed: 2026-10-19. State: P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives and P2.5B.2 bounded write-rate planning are implemented for tests. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
 
 ## Decision and scope
 
@@ -132,6 +132,7 @@ sizes, caching and queue depth differ.
 - [ ] P2.5B pinned DiskSpd executable and license notices
 - [ ] P2.5B create-new scratch file, volume/ownership verification
 - [ ] P2.5B raw targets, symlinks, UNC paths and injections rejected
+- [ ] P2.5B write-rate ceiling and consent byte estimate enforced by live worker
 - [ ] P2.5B bounded space/wear, cancellation and crash cleanup
 - [ ] P2.5B SSD/HDD/USB disposable-device validation
 - [ ] P2.5B repeatable reports with known cache and units
@@ -224,3 +225,23 @@ volume/handle identity, system disk exclusion, exclusive writable volume
 authorization, full process-tree cancellation via Windows Job Objects,
 and a user-facing consent flow remain mandatory P2.5B release gates.
 No Electron IPC launch method or real write benchmark was introduced.
+
+## P2.5B.2 — Fixed write-rate ceiling and conservative byte estimate
+
+The workload planner adds DiskSpd's `-g100000` (100,000 bytes/ms) only to
+write workloads. The policy fixes one thread and one target, so the
+per-thread/per-target rate ceiling is 100 MB/s decimal. Read workloads remain
+uncapped so their throughput is not intentionally reduced.
+
+The planner returns a conservative write-byte estimate equal to that rate
+multiplied by the full process deadline for every repetition. The deadline
+includes warmup, measurement and the existing 15-second termination allowance;
+the maximum accepted settings therefore estimate at most 27,000,000,000 bytes
+for one profile run (15-second warmup, 60-second measurement, three repeats).
+The later consent screen must present this bound before a write run and still
+mention flash wear and thermal effects. This estimate is not yet connected to
+the UI or a production worker, and it is not proof of any live write behavior.
+
+The official DiskSpd command reference defines `-g` as a per-thread,
+per-target bytes-per-millisecond throughput throttle:
+https://github.com/microsoft/diskspd/wiki/Command-line-and-parameters

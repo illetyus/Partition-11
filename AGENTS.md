@@ -1,5 +1,29 @@
 # Partition 11 — Agent / future-session instructions
 
+## LATEST MERGED CHECKPOINT — P2 metadata inventory (2026-10-19)
+
+- PR #49 merged after 5/5 PR checks: `da764c19ef24bfb9eb62e0ad147fe074ca841675`.
+  Fresh `main` is `fdab284f936bf20a5bcecd5b28d4ca200280a4aa`, with 3/3 checks:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39302671867),
+  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39302671866),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39302671967).
+- P2 adds the bounded metadata-only physical disk inventory endpoint. It does
+  not expose raw sectors, serials, durable device IDs or write capabilities.
+  Physical Windows 11 acceptance and durable identity remain open in Issue #31.
+- Current implementation branch: `feature/p2.5-file-benchmark`.
+  P2.5B.2 adds a write-only DiskSpd rate limit and conservative byte estimate
+  to the internal workload planner. It does not enable the UI, benchmark
+  worker, live volume selection or writes.
+- Continue P2.5 in small tested PRs: authorize and revalidate a non-system
+  volume, verify app-owned scratch-file identity, obtain separate write
+  consent, package the pinned engine, and cancel the full process tree with a
+  Windows Job Object. Do not expose a live benchmark until every gate is met.
+- The user's canonical repo is `D:\Partition 11`; shared general build
+  dependencies belong under `D:\Android`. The user performs physical Windows
+  11 device acceptance; never substitute a hosted VM result for that gate.
+
+---
+
 ## LATEST MERGED DEVELOPMENT — bounded/cancellable metadata I/O (2026-10-19)
 
 - [PR #46](https://github.com/illetyus/Partition-11/pull/46) merged to
