@@ -1,23 +1,27 @@
 # Partition 11 — Agent / future-session instructions
 
-## LATEST MERGED CHECKPOINT — P2 metadata inventory (2026-10-19)
+## LATEST MERGED CHECKPOINT — P2.5B.2 write workload bounds (2026-10-19)
 
-- PR #49 merged after 5/5 PR checks: `da764c19ef24bfb9eb62e0ad147fe074ca841675`.
-  Fresh `main` is `fdab284f936bf20a5bcecd5b28d4ca200280a4aa`, with 3/3 checks:
-  [CI](https://github.com/illetyus/Partition-11/actions/runs/39302671867),
-  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39302671866),
-  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39302671967).
-- P2 adds the bounded metadata-only physical disk inventory endpoint. It does
-  not expose raw sectors, serials, durable device IDs or write capabilities.
-  Physical Windows 11 acceptance and durable identity remain open in Issue #31.
-- Current implementation branch: `feature/p2.5-file-benchmark`.
-  P2.5B.2 adds a write-only DiskSpd rate limit and conservative byte estimate
-  to the internal workload planner. It does not enable the UI, benchmark
-  worker, live volume selection or writes.
-- Continue P2.5 in small tested PRs: authorize and revalidate a non-system
-  volume, verify app-owned scratch-file identity, obtain separate write
-  consent, package the pinned engine, and cancel the full process tree with a
-  Windows Job Object. Do not expose a live benchmark until every gate is met.
+- PR #50 merged as `b1dfe8ddcc0d68dbc8880585b16b884b9d446863` after 5/5 PR
+  checks. Fresh `main` passed CI, Windows UI, and DiskSpd XML checks 3/3:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39304667854),
+  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39304667866),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39304667878).
+- P2.5B.2 adds a write-only DiskSpd rate cap and conservative byte estimate
+  to the internal workload planner. It does not enable a production worker,
+  live volume selection, or writes.
+- Current local branch: `feature/p2.5-protected-partition-types`. It preserves
+  MBR/GPT partition classes through metadata worker protocol v2 so later
+  volume policy can conservatively reject boot/recovery classes. This is not
+  complete system-volume detection or volume authorization; PR/CI remain open.
+- Next, implement trusted volume-to-disk mapping and fail-closed system/boot,
+  filesystem, identity, reparse-point, and free-space checks before scratch
+  file creation, write consent, or a production worker. Never expose live
+  benchmark launch until all gates pass.
+- PR #49 added the bounded metadata-only physical disk inventory endpoint;
+  it does not expose raw sectors, serials, or durable device IDs. Physical
+  Windows 11 USB/NVMe/SATA/BitLocker/sector-size acceptance remains the user's
+  test gate in Issue #31.
 - The user's canonical repo is `D:\Partition 11`; shared general build
   dependencies belong under `D:\Android`. The user performs physical Windows
   11 device acceptance; never substitute a hosted VM result for that gate.

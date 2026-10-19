@@ -1,6 +1,6 @@
 # P2.5 — Disk Benchmark: literature review and implementation plan
 
-Reviewed: 2026-10-19. State: P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives and P2.5B.2 bounded write-rate planning are implemented for tests. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
+Reviewed: 2026-10-19. State: P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives and P2.5B.2 bounded write-rate planning are implemented for tests. Local P2.5B.3 changes preserve protected MBR/GPT partition metadata through worker protocol v2, but do not yet authorize volumes or identify every system volume. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
 
 ## Decision and scope
 

@@ -3,14 +3,16 @@
 //! The request intentionally carries only a fresh SetupAPI path/instance pair.
 //! It never carries an IOCTL, operation selector, or renderer-controlled data.
 
-use partition11_core::windows_layout::{DriveLayout, LayoutStyle, PartitionRange, MAX_ENTRIES};
+use partition11_core::windows_layout::{
+    DriveLayout, LayoutStyle, PartitionRange, PartitionType, MAX_ENTRIES,
+};
 use std::collections::HashSet;
 
 pub(crate) const MAX_WIRE_BYTES: usize = 65_536;
 const MAX_PATH_UNITS: usize = 16_384;
 const MAX_INSTANCE_ID_UNITS: usize = 2_047;
 const MAGIC: &[u8; 4] = b"P11W";
-const VERSION: u16 = 1;
+const VERSION: u16 = 2;
 const REQUEST_KIND: u16 = 1;
 const REPLY_KIND: u16 = 2;
 
@@ -340,6 +342,11 @@ fn validate_layout(layout: &DriveLayout) -> Result<(), ProtocolError> {
         {
             return Err(ProtocolError::InvalidField);
         }
+        match (layout.style, partition.partition_type) {
+            (LayoutStyle::Mbr, PartitionType::Mbr { type_id, .. }) if type_id != 0 => {}
+            (LayoutStyle::Gpt, PartitionType::Gpt(guid)) if guid.iter().any(|byte| *byte != 0) => {}
+            _ => return Err(ProtocolError::InvalidField),
+        }
         previous_end = end;
     }
     Ok(())
@@ -410,6 +417,16 @@ fn write_layout(out: &mut Vec<u8>, layout: &DriveLayout) -> Result<(), ProtocolE
         write_u64(out, partition.offset);
         write_u64(out, partition.length);
         write_u8(out, u8::from(partition.service));
+        match partition.partition_type {
+            PartitionType::Mbr {
+                type_id,
+                boot_indicator,
+            } => {
+                write_u8(out, type_id);
+                write_u8(out, u8::from(boot_indicator));
+            }
+            PartitionType::Gpt(guid) => out.extend_from_slice(&guid),
+        }
     }
     Ok(())
 }
@@ -436,11 +453,33 @@ fn read_layout(reader: &mut Reader<'_>) -> Result<DriveLayout, ProtocolError> {
             1 => true,
             _ => return Err(ProtocolError::InvalidField),
         };
+        let partition_type = match style {
+            LayoutStyle::Mbr => {
+                let type_id = reader.u8()?;
+                let boot_indicator = match reader.u8()? {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(ProtocolError::InvalidField),
+                };
+                PartitionType::Mbr {
+                    type_id,
+                    boot_indicator,
+                }
+            }
+            LayoutStyle::Gpt => PartitionType::Gpt(
+                reader
+                    .take(16)?
+                    .try_into()
+                    .map_err(|_| ProtocolError::Truncated)?,
+            ),
+            LayoutStyle::Raw => return Err(ProtocolError::InvalidField),
+        };
         occupied.push(PartitionRange {
             number,
             offset,
             length,
             service,
+            partition_type,
         });
     }
     let layout = DriveLayout {
@@ -525,7 +564,9 @@ pub(crate) fn decode_reply(bytes: &[u8]) -> Result<WorkerReply, ProtocolError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use partition11_core::windows_layout::{DriveLayout, LayoutStyle, PartitionRange};
+    use partition11_core::windows_layout::{
+        DriveLayout, LayoutStyle, PartitionRange, PartitionType,
+    };
 
     fn utf16(value: &str) -> Vec<u16> {
         value.encode_utf16().collect()
@@ -547,6 +588,10 @@ mod tests {
                     offset: 4096,
                     length: 524_288,
                     service: false,
+                    partition_type: PartitionType::Gpt([
+                        0x28, 0x73, 0x2a, 0xc1, 0x1f, 0xf8, 0xd2, 0x11, 0xba, 0x4b, 0x00, 0xa0,
+                        0xc9, 0x3e, 0xc9, 0x3b,
+                    ]),
                 }],
                 returned_slots: 1,
             }),
@@ -603,7 +648,13 @@ mod tests {
     fn reply_round_trip_preserves_all_metadata_field_results() {
         let ready = WorkerReply::Ready(sample_metadata());
         let bytes = encode_reply(&ready).expect("ready reply encodes");
-        assert_eq!(decode_reply(&bytes).expect("ready reply decodes"), ready);
+        let decoded = decode_reply(&bytes).expect("ready reply decodes");
+        assert_eq!(decoded, ready);
+        let WorkerReply::Ready(metadata) = decoded else {
+            panic!("ready reply expected")
+        };
+        let layout = metadata.partition_layout.expect("layout preserved");
+        assert!(layout.occupied[0].is_protected_for_benchmark());
 
         let partial = WorkerReply::Ready(WireMetadata {
             device_number: 9,
@@ -627,6 +678,46 @@ mod tests {
     }
 
     #[test]
+    fn mbr_partition_classification_survives_worker_protocol_round_trip() {
+        let mut metadata = sample_metadata();
+        let layout = metadata.partition_layout.as_mut().unwrap();
+        layout.style = LayoutStyle::Mbr;
+        layout.returned_slots = 4;
+        layout.occupied[0].partition_type = PartitionType::Mbr {
+            type_id: 0x07,
+            boot_indicator: true,
+        };
+
+        let bytes = encode_reply(&WorkerReply::Ready(metadata)).expect("encodes");
+        let WorkerReply::Ready(decoded) = decode_reply(&bytes).expect("decodes") else {
+            panic!("ready reply expected");
+        };
+        let layout = decoded.partition_layout.unwrap();
+        assert_eq!(
+            layout.occupied[0].partition_type,
+            PartitionType::Mbr {
+                type_id: 0x07,
+                boot_indicator: true,
+            }
+        );
+        assert!(layout.occupied[0].is_protected_for_benchmark());
+    }
+
+    #[test]
+    fn worker_protocol_rejects_partition_type_for_wrong_layout_style() {
+        let mut metadata = sample_metadata();
+        metadata.partition_layout.as_mut().unwrap().occupied[0].partition_type =
+            PartitionType::Mbr {
+                type_id: 0x07,
+                boot_indicator: false,
+            };
+        assert!(matches!(
+            encode_reply(&WorkerReply::Ready(metadata)),
+            Err(ProtocolError::InvalidField)
+        ));
+    }
+
+    #[test]
     fn reply_rejects_more_than_128_partitions_and_truncation() {
         let mut too_many = sample_metadata();
         if let Ok(layout) = &mut too_many.partition_layout {
@@ -636,6 +727,10 @@ mod tests {
                     offset: u64::from(number) * 4096,
                     length: 2048,
                     service: false,
+                    partition_type: PartitionType::Gpt([
+                        0xa2, 0xa0, 0xd0, 0xeb, 0xe5, 0xb9, 0x33, 0x44, 0x87, 0xc0, 0x68, 0xb6,
+                        0xb7, 0x26, 0x99, 0xc7,
+                    ]),
                 })
                 .collect();
             layout.returned_slots = 129;

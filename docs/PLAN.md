@@ -1,36 +1,23 @@
 # Partition 11 implementation plan
 
-## Current worktree checkpoint — read-only physical disk preview
+## Current worktree checkpoint — P2.5B.3 partition protection metadata (2026-10-19)
 
-The approved preview design is implemented locally on
-`feature/p2-i2c-readonly-ui` at the user-designated worktree
-`D:\Partition 11\.worktrees\readonly-disk-preview`. It adds the one-shot,
-bounded JSON inventory request, strict Electron agent response validation,
-timeout/process handling, a non-selectable real-inventory view, and a separate
-synthetic demo view. The Windows x64 unsigned unpacked package and ZIP are
-available under `release/` in that worktree.
+The current branch, `feature/p2.5-protected-partition-types`, starts from the
+merged P2.5B.2 checkpoint at `b1dfe8d`. It preserves MBR partition type and
+active/boot indicator values plus GPT type GUID bytes in the metadata parser
+and internal worker protocol v2. Known service, EFI, Microsoft Reserved,
+Microsoft Recovery, active MBR, MBR recovery, and MBR EFI partition classes
+are marked protected for a future benchmark policy.
 
-An independent review found and this worktree fixed three lifecycle gaps:
-timeouts retain the scan slot until the killed child closes, the agent exits at
-an independent 32-second hard deadline, and stdin pipe errors terminate and
-drain the child safely. The agent's deadline exit is surfaced as a timeout; the
-stale module header was corrected.
+This is only classification metadata. It does not identify every Windows
+system/boot volume or map volumes to physical disks, and it does not authorize
+a target or launch DiskSpd. Windows volume enumeration, system-volume checks,
+stable identity, free-space and filesystem policy remain required gates.
+No physical disk tests were run.
 
-Local verification: TypeScript/renderer build passed; 40 main-process tests
-passed; Electron UI smoke passed 32 assertions with mocked IPC and no automatic
-device query. Rust formatting and warning-denying Clippy passed; 18 core,
-1 hard-deadline, 4 protocol, 7 scan-identity, and 4 timeout tests passed.
-The Windows x64 agent is included in the unsigned unpacked package and
-`release/Partition-11-Windows-x64-preview-reviewed.zip`. The local Electron
-Viz screenshot capture path failed earlier with `UnknownVizError`, so this run
-explicitly skipped 11 captures; GitHub's screenshot job remains required.
-
-This is an **unmerged local implementation**, not a GitHub CI result or
-physical Windows 11 acceptance. The agent and renderer were not used to query
-the user's physical disks. User acceptance still needs USB/NVMe/SATA,
-hotplug, BitLocker, and 512e/4Kn checks. No durable hardware identity,
-raw-sector access, write/format/repair/resize/mount action, or elevation was
-added. Later P3–P9 roadmap features remain open.
+Local verification on Windows x64: Rust format and warning-denying Clippy
+passed; 79 agent and 19 core tests passed. Electron's 42 main-process tests and
+production build passed. Pull request and hosted CI checks remain pending.
 
 ---
 
@@ -203,12 +190,14 @@ only after an explicit architecture decision and license review.
   PR #49 merged at `fdab284f936bf20a5bcecd5b28d4ca200280a4aa`; PR checks were
   5/5 and post-merge main checks were 3/3. Physical Windows 11 acceptance and
   stable hardware identity remain open.
-- **P2.5A / P2.5B.1 / P2.5B.2**: Four mock-only benchmark profiles, a strict XML result
+- **P2.5A / P2.5B.1 / P2.5B.2 / local P2.5B.3**: Four mock-only benchmark profiles, a strict XML result
   parser, genuine pinned DiskSpd **read-only CI** smoke test, fixed workload
   planner with a write-only `-g100000` cap and conservative byte estimate,
-  and exact-owned scratch-file tests exist. No user-facing benchmark process,
-  production volume authorization, Job Object cancellation, consent screen or
-  real-device performance reports exist.
+  exact-owned scratch-file tests, and protected MBR/GPT partition metadata
+  carried by worker protocol v2 exist. The P2.5B.3 changes are still local and
+  pending PR/CI. No user-facing benchmark process, production volume
+  authorization, Job Object cancellation, consent screen or real-device
+  performance reports exist.
 - **P3–P8**: No ext read/write engine is integrated; formatting, mount,
   repair, resize and raw disk writes remain unavailable.
 - **P9**: GitHub Actions can package an unsigned, unpacked x64 UI preview;

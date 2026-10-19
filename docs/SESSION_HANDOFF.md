@@ -1,5 +1,21 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-19)
 
+## EN YENİ YEREL DİLİM — P2.5B.3 korunan bölüm türleri
+
+`feature/p2.5-protected-partition-types`, PR #50'nin merge edilmiş
+`b1dfe8d` checkpoint'inden başlıyor. Bu dilim `PARTITION_INFORMATION_EX`
+çıktısındaki MBR bölüm türünü ve boot göstergesini, GPT tür GUID'ini parser'da
+koruyor; worker protokolü sürüm 2 bunları kayıpsız taşıyor. EFI, Microsoft
+Reserved, Microsoft Recovery, servis, aktif MBR, MBR Recovery ve MBR EFI
+sınıfları gelecekteki benchmark hedef politikasına korumalı işaretleniyor.
+
+Yerel Windows x64 doğrulaması: Rust format/Clippy geçti; 79 agent ve 19 core
+testi geçti. Electron ana süreç testleri 42/42, production build başarılı.
+PR ve hosted CI henüz yok. Bu sınıflandırma tüm Windows system/boot volume'larını
+kanıtlamaz; volume->disk eşlemesi, sistem/önyükleme bayrakları, uygun dosya
+sistemi, serbest alan ve kararlı kimlik kapıları hâlâ uygulanmalı. Fiziksel
+disk testi yapılmadı.
+
 ## EN YENİ DEVAM NOKTASI — P2 envanter birleşti; P2.5 yazma sınırı planlayıcısı
 
 PR #49, `da764c19ef24bfb9eb62e0ad147fe074ca841675` başıyla tüm **5/5 PR
