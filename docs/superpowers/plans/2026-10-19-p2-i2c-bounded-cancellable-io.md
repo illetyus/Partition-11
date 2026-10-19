@@ -31,6 +31,8 @@
 
 The implementation and review fixes are merged in [PR #46](https://github.com/illetyus/Partition-11/pull/46) as `a9cb53344ff560082096d728eb453af0532a7415`. The first review found that the request deadline started after `DeviceIoControl` submission and that a stuck worker relied only on the parent watchdog; both gaps were fixed, and the follow-up review found no actionable issues. Local verification passed: **88/88 Rust tests**, Clippy, formatting, Windows release build, Windows SDK C ABI check, Electron build, and **31/31 main-process tests**. The main-process tests require repo-local `TEMP`/`TMP` because the default AppContainer temp directory rejects the test's rename with `EPERM`. PR #46 passed 5/5 required checks; fresh post-merge `main` also passed 5/5: [CI](https://github.com/illetyus/Partition-11/actions/runs/39195989162), [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39195989210), [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39195989174). Issue #31 remains open for durable hardware identity, physical Windows 11 acceptance, and authenticated read-only IPC/UI; these gates are intentionally outside this implementation plan.
 
+The final documentation handoff [PR #47](https://github.com/illetyus/Partition-11/pull/47) merged at `fde9b24193eab4c32ecb1610c3eb00af8b31b3d0`; fresh post-merge `main` passed 5/5: [CI](https://github.com/illetyus/Partition-11/actions/runs/39197425292), [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39197425330), [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39197425310). Issue #31 was updated after these checks and remains open for the gates above.
+
 ## Review Focus
 
 - **PnP during pending IOCTL:** callback must request cancellation without blocking; the worker must cancel the exact active request and must not start a later IOCTL.
@@ -517,10 +519,10 @@ Still open after item 2:
 
 Do not claim physical hotplug acceptance from hosted CI.
 
-- [ ] **Step 3: Docs PR five-for-five and merge**
+- [x] **Step 3: Docs PR five-for-five and merge**
 
-Run/await the same five required checks, merge the documentation PR, then verify fresh `main` five-for-five once more.
+PR #47 passed all five required hosted checks, was squash-merged at `fde9b24193eab4c32ecb1610c3eb00af8b31b3d0`, and received five fresh successful `main` checks as recorded in the execution checkpoint above.
 
-- [ ] **Step 4: Update Issue #31**
+- [x] **Step 4: Update Issue #31**
 
-Mark roadmap item 2 complete only after the final post-doc `main` verification. Keep Issue #31 open for hardware identity and later acceptance/security gates.
+Issue #31 records item 2 complete after final post-doc `main` verification and remains open for hardware identity, physical Windows 11 acceptance, and authenticated read-only IPC/UI.
