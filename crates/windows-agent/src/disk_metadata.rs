@@ -5,6 +5,7 @@ pub(crate) use crate::metadata_query::SectorSizes;
 use crate::scan_identity::ScanGeneration;
 use partition11_core::windows_layout::DriveLayout;
 use std::fmt;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MetadataError {
@@ -91,6 +92,14 @@ impl<'a> ProbeEpoch<'a> {
 pub(crate) enum ScanError {
     Discovery(disk_discovery::DiscoveryError),
     Security(MetadataError),
+    TimedOut,
+}
+
+fn remaining_scan_time(deadline: Instant) -> Result<Duration, ScanError> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or(ScanError::TimedOut)
 }
 
 impl fmt::Display for ScanError {
@@ -98,6 +107,7 @@ impl fmt::Display for ScanError {
         match self {
             Self::Discovery(e) => write!(f, "Windows enumeration: {e}"),
             Self::Security(e) => write!(f, "Windows metadata policy: {e}"),
+            Self::TimedOut => write!(f, "bounded disk inventory scan timed out"),
         }
     }
 }
@@ -105,6 +115,13 @@ impl fmt::Display for ScanError {
 /// Return provisional metadata only to the local agent, never to Electron.
 /// A later, independent SetupAPI pass rejects paths that disappeared.
 pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanError> {
+    inspect_discovered_devices_with_timeout(Duration::from_secs(30))
+}
+
+pub(crate) fn inspect_discovered_devices_with_timeout(
+    timeout: Duration,
+) -> Result<Vec<ProbeOutcome>, ScanError> {
+    let deadline = Instant::now() + timeout;
     crate::metadata_query::reject_elevated_process().map_err(ScanError::Security)?;
     let generation = ScanGeneration::default();
     let notifications = crate::pnp_notifications::DiskNotifications::register(&generation)
@@ -116,14 +133,24 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
     let snapshot = generation
         .capture(&before)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
-    let results: Vec<_> = before
-        .iter()
-        .map(|record| {
-            crate::metadata_worker::probe_via_worker(record, &generation, starting_revision)
-        })
-        .collect();
+    let mut results = Vec::with_capacity(before.len());
+    for record in &before {
+        let remaining = remaining_scan_time(deadline)?;
+        let result = crate::metadata_worker::probe_via_worker_with_timeout(
+            record,
+            &generation,
+            starting_revision,
+            remaining,
+        );
+        if matches!(result, ProbeOutcome::Unavailable(MetadataError::TimedOut)) {
+            return Err(ScanError::TimedOut);
+        }
+        results.push(result);
+    }
+    remaining_scan_time(deadline)?;
     epoch.ensure_current().map_err(ScanError::Security)?;
     let after = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
+    remaining_scan_time(deadline)?;
     let numbers: Vec<_> = results
         .iter()
         .filter_map(|result| match result {
@@ -137,6 +164,7 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
     notifications
         .finish()
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
+    remaining_scan_time(deadline)?;
     if generation.revision() != starting_revision {
         return Err(ScanError::Security(MetadataError::IdentityChanged));
     }
@@ -151,6 +179,15 @@ pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanErro
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[test]
+    fn expired_scan_deadline_rejects_before_work_continues() {
+        assert!(matches!(
+            remaining_scan_time(Instant::now() - Duration::from_millis(1)),
+            Err(ScanError::TimedOut)
+        ));
+        assert!(remaining_scan_time(Instant::now() + Duration::from_secs(1)).is_ok());
+    }
 
     #[test]
     fn cancelled_epoch_never_starts_a_later_worker() {

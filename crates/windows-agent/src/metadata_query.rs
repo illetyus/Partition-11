@@ -140,6 +140,7 @@ fn classify_error(code: u32) -> MetadataError {
         5 => MetadataError::AccessDenied,
         2 | 3 | 21 | 55 | 1167 => MetadataError::DeviceRemoved,
         1 | 50 | 87 => MetadataError::Unsupported,
+        121 | 1460 => MetadataError::TimedOut,
         other => MetadataError::Win32(other),
     }
 }

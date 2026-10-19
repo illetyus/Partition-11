@@ -13,8 +13,9 @@ const path = require("node:path");
 const projectRoot = path.resolve(__dirname, "..");
 const output = path.join(projectRoot, "ui-artifacts");
 fs.mkdirSync(output, { recursive: true });
-const report = { platform: process.platform, screenshots: [], assertions: [], errors: [] };
+const report = { platform: process.platform, screenshots: [], skippedScreenshots: [], assertions: [], errors: [] };
 let windowRef;
+let inventoryRequests = 0;
 const watchdog = setTimeout(() => fail(new Error("Windows UI smoke timed out after 90 seconds")), 90_000);
 
 function check(condition, message) {
@@ -48,6 +49,10 @@ async function waitUntil(source, timeoutMs = 12_000) {
   throw new Error("Renderer did not reach expected state: " + source);
 }
 async function snap(name) {
+  if (process.env.PARTITION11_UI_SMOKE_SKIP_CAPTURE === "1") {
+    report.skippedScreenshots.push(name);
+    return;
+  }
   await new Promise(resolve => setTimeout(resolve, 220));
   const screenshot = await windowRef.webContents.capturePage();
   const fileName = name + ".png";
@@ -63,7 +68,7 @@ function bridge() {
     agentConnected: false,
     capabilities: {
       inspectImages: false,
-      inspectPhysicalDisks: false,
+      inspectPhysicalDisks: true,
       writeImages: false,
       writePhysicalDisks: false
     }
@@ -87,6 +92,24 @@ function bridge() {
     canRead: false,
     canWrite: false
   }));
+  ipcMain.handle("partition11:read-only-disk-inventory", () => {
+    inventoryRequests += 1;
+    return {
+      protocolVersion: 1,
+      status: "ok",
+      scannedAt: "2026-10-19T12:00:00.000Z",
+      disks: [{
+        ordinal: 1,
+        availability: "ready",
+        capacityBytes: "68719476736",
+        logicalSectorSize: 512,
+        physicalSectorSize: 4096,
+        busType: "usb",
+        partitionStyle: "gpt",
+        partitionCount: 2
+      }]
+    };
+  });
   ipcMain.handle("partition11:titlebar-theme", (_, theme) => {
     if (!["light", "dark"].includes(theme)) throw new Error("Invalid theme");
     windowRef.setTitleBarOverlay({
@@ -97,6 +120,7 @@ function bridge() {
   });
 }
 async function main() {
+  nativeTheme.themeSource = "light";
   bridge();
   windowRef = new BrowserWindow({
     width: 1460,
@@ -106,6 +130,7 @@ async function main() {
     titleBarOverlay: { color: "#eef2f7", symbolColor: "#202938", height: 80 },
     backgroundColor: "#f7f8fa",
     webPreferences: {
+      partition: "windows-ui-smoke",
       preload: path.join(projectRoot, "dist", "main", "main", "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
@@ -117,9 +142,23 @@ async function main() {
     if (details.level === "error") console.error("Renderer:", details.message);
   });
   await windowRef.loadFile(path.join(projectRoot, "dist", "renderer", "index.html"));
-  await waitUntil("Boolean(document.querySelector('[data-testid=\"format-workspace\"]'))");
+  await waitUntil("Boolean(document.querySelector('[data-testid=\"inventory-idle\"]'))");
   await waitUntil("document.querySelector('.status-left')?.textContent?.includes('Hazır')");
-  check((await js("document.querySelector('h1')?.textContent")) === "Biçimlendir", "Reference formatter heading is present");
+  check((await js("document.querySelector('h1')?.textContent")) === "Disk envanteri", "Read-only disk inventory is the default view");
+  check(inventoryRequests === 0, "Opening the app never starts a physical disk query");
+  check(await js("document.querySelector('.inventory-safety-note')?.textContent.includes('kapalı')"), "Inventory view states all disabled operations");
+  await snap("01-inventory-idle");
+  await js("document.querySelector('.inventory-refresh').click()");
+  await waitUntil("Boolean(document.querySelector('[data-testid=\"inventory-disk-1\"]'))");
+  check(inventoryRequests === 1, "Only an explicit refresh requests disk inventory");
+  check(await js("document.querySelectorAll('.inventory-row button').length === 0"), "Real inventory rows are not selectable controls");
+  check(await js("document.querySelector('[data-testid=\"inventory-disk-1\"]')?.textContent.includes('USB')"), "Inventory displays the mock USB bus independently");
+  check(await js("document.querySelector('.inventory-row')?.textContent.includes('64.0 GiB')"), "Disk capacity is rendered from the allowlisted metadata");
+  await snap("02-readonly-inventory");
+
+  await js("document.querySelector('.view-switch button:nth-child(2)').click()");
+  await waitUntil("Boolean(document.querySelector('[data-testid=\"format-workspace\"]'))");
+  check((await js("document.querySelector('h1')?.textContent")) === "Biçimlendir", "Synthetic formatter demo remains separate from real inventory");
   check((await js("document.querySelectorAll('.disk-item').length")) === 3, "Three synthetic disk cards are rendered");
   check(await js("document.querySelector('[data-testid=\"disk-sample-system\"]').disabled"), "Protected system disk is disabled");
   check(await js("document.querySelector('[data-testid=\"format-button\"]').disabled"), "Formatting is strictly disabled");
@@ -127,30 +166,30 @@ async function main() {
   check(!(await js("Boolean(document.querySelector('.field-error'))")), "Default label passes validation");
   check((await js("document.querySelector('.partition-theme')?.dataset.theme")) === "light", "Light color scheme renders initially");
 
-  await snap("01-light-reference");
+  await snap("03-light-demo");
   await js("document.querySelector('[data-testid=\"disk-sample-sandisk\"]').click()");
   await waitUntil("document.querySelector('#selected-disk-heading')?.textContent === 'SanDisk Ultra'");
   check((await js("document.querySelector('.partition-head')?.textContent")).includes("FAT32"), "Selecting a sample disk updates the partition summary");
   await js("document.querySelector('[data-testid=\"advanced-settings-toggle\"]').click()");
   await waitUntil("document.getElementById('advanced-settings') !== null");
   check((await js("document.querySelector('[data-testid=\"advanced-settings-toggle\"]').getAttribute('aria-expanded')")) === "true", "Advanced controls announce expanded state");
-  await snap("02-advanced-sandisk");
+  await snap("04-advanced-sandisk");
 
   await js("document.querySelector('.theme-toggle').click()");
   await waitUntil("document.querySelector('.partition-theme')?.dataset.theme === 'dark'");
   check(await js("getComputedStyle(document.querySelector('.partition-theme')).colorScheme === 'dark'"), "Dark theme has matching browser color scheme");
-  await snap("03-dark-reference");
+  await snap("05-dark-reference");
 
   windowRef.setSize(860, 750);
   await new Promise(resolve => setTimeout(resolve, 400));
   check(await js("document.documentElement.scrollWidth <= window.innerWidth + 1"), "Compact desktop layout has no horizontal overflow");
-  await snap("04-narrow-desktop");
+  await snap("06-narrow-desktop");
 
   windowRef.setSize(520, 780);
   await new Promise(resolve => setTimeout(resolve, 400));
   check(await js("document.documentElement.scrollWidth <= window.innerWidth + 1"), "Small-screen responsive layout has no horizontal overflow");
   check(await js("document.querySelector('[data-testid=\"format-button\"]').disabled"), "Format remains disabled at narrow size");
-  await snap("05-narrow-layout");
+  await snap("07-narrow-layout");
 
   // The hosted Windows display can be only 1024×768. Capture the lower
   // warning and action area separately so the entire reference can be
@@ -160,7 +199,7 @@ async function main() {
   await js("document.querySelector('.warning-box').scrollIntoView({block: 'start'})");
   check(await js("document.querySelector('.warning-box')?.textContent.includes('tüm dosyaları siler')"), "Destructive-action warning is visible");
   check(await js("document.querySelector('[data-testid=format-button]').disabled"), "Format is still disabled in the bottom action area");
-  await snap("06-warning-and-action");
+  await snap("08-warning-and-action");
 
   // P2.5A: benchmark screen must be reachable yet never write data.
   await js("document.querySelector('[data-testid=screen-tab-benchmark]').click()");
@@ -173,7 +212,7 @@ async function main() {
   check(await js("document.body.textContent.includes('Örnek veri')"), "Benchmark target is marked synthetic");
   await js("document.querySelector('.theme-toggle').click()");
   await waitUntil("document.querySelector('.partition-theme')?.dataset.theme === 'light'");
-  await snap("07-benchmark-light");
+  await snap("09-benchmark-light");
 
   await js("document.querySelector('[data-testid=screen-tab-benchmark]') && document.querySelector('.bench-details-toggle').click()");
   await waitUntil("document.getElementById('benchmark-details') !== null");
@@ -183,12 +222,12 @@ async function main() {
   check(await js("document.querySelector('[data-testid=benchmark-start]').disabled"), "Changing targets never enables live benchmarking");
   await js("document.querySelector('.theme-toggle').click()");
   await waitUntil("document.querySelector('.partition-theme')?.dataset.theme === 'dark'");
-  await snap("08-benchmark-dark");
+  await snap("10-benchmark-dark");
 
   windowRef.setSize(520, 780);
   await new Promise(resolve => setTimeout(resolve, 360));
   check(await js("document.documentElement.scrollWidth <= window.innerWidth + 1"), "Narrow benchmark page has no document-wide horizontal overflow");
-  await snap("09-benchmark-narrow");
+  await snap("11-benchmark-narrow");
 
   await js("document.querySelector('[data-testid=screen-tab-format]').click()");
   await waitUntil("document.querySelector('h1')?.textContent === 'Biçimlendir'");

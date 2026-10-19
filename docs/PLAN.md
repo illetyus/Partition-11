@@ -1,5 +1,39 @@
 # Partition 11 implementation plan
 
+## Current worktree checkpoint — read-only physical disk preview
+
+The approved preview design is implemented locally on
+`feature/p2-i2c-readonly-ui` at the user-designated worktree
+`D:\Partition 11\.worktrees\readonly-disk-preview`. It adds the one-shot,
+bounded JSON inventory request, strict Electron agent response validation,
+timeout/process handling, a non-selectable real-inventory view, and a separate
+synthetic demo view. The Windows x64 unsigned unpacked package and ZIP are
+available under `release/` in that worktree.
+
+An independent review found and this worktree fixed three lifecycle gaps:
+timeouts retain the scan slot until the killed child closes, the agent exits at
+an independent 32-second hard deadline, and stdin pipe errors terminate and
+drain the child safely. The agent's deadline exit is surfaced as a timeout; the
+stale module header was corrected.
+
+Local verification: TypeScript/renderer build passed; 40 main-process tests
+passed; Electron UI smoke passed 32 assertions with mocked IPC and no automatic
+device query. Rust formatting and warning-denying Clippy passed; 18 core,
+1 hard-deadline, 4 protocol, 7 scan-identity, and 4 timeout tests passed.
+The Windows x64 agent is included in the unsigned unpacked package and
+`release/Partition-11-Windows-x64-preview-reviewed.zip`. The local Electron
+Viz screenshot capture path failed earlier with `UnknownVizError`, so this run
+explicitly skipped 11 captures; GitHub's screenshot job remains required.
+
+This is an **unmerged local implementation**, not a GitHub CI result or
+physical Windows 11 acceptance. The agent and renderer were not used to query
+the user's physical disks. User acceptance still needs USB/NVMe/SATA,
+hotplug, BitLocker, and 512e/4Kn checks. No durable hardware identity,
+raw-sector access, write/format/repair/resize/mount action, or elevation was
+added. Later P3–P9 roadmap features remain open.
+
+---
+
 ## Current checkpoint — roadmap item 2 bounded metadata I/O complete
 
 [PR #46](https://github.com/illetyus/Partition-11/pull/46) merged to
@@ -16,11 +50,13 @@ parent limits, and post-worker generation/inventory validation. Timed-out,
 cancelled, malformed or stale results are discarded. See
 [P2_I2C_BOUNDED_IO.md](P2_I2C_BOUNDED_IO.md) for behavior and limits.
 
-**Still open in [Issue #31](https://github.com/illetyus/Partition-11/issues/31):**
-durable hardware identity, physical Windows 11 USB/NVMe/SATA/BitLocker/512e/4Kn
-acceptance, and authenticated read-only agent IPC/UI. No renderer disk access,
-raw-sector operations, write, format, mount, repair, resize, or elevation is
-enabled.
+At this main-branch checkpoint, [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+still had durable hardware identity, physical Windows 11 USB/NVMe/SATA/
+BitLocker/512e/4Kn acceptance, and authenticated read-only agent IPC/UI open.
+The current worktree checkpoint above implements bounded sender-validated
+IPC/UI locally but is not merged. The request ID is correlation only and does
+not cryptographically authenticate the executable. No raw-sector operation,
+write, format, mount, repair, resize, or elevation is enabled.
 
 ---
 

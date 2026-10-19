@@ -734,3 +734,74 @@ Aşağıdaki metni yeni ChatGPT/Codex oturumuna ver:
 > belgesini güncelle. Gerçek diske yazma/format yetkisi açma.
 > Bana yapılanlar, merge ve test kanıtları, kalanlar ve sıradaki adım
 > hakkında sade Türkçe rapor ver.
+
+## 9. 2026-10-19 — P2 read-only inventory local implementation
+
+The latest local implementation is on branch `feature/p2-i2c-readonly-ui`
+in `D:\Partition 11\.worktrees\readonly-disk-preview`, based on live main
+`5b4c4d985563aee525007ce3a10248b3be03c07f` when this work began. The user
+approved the design at
+`docs/superpowers/specs/2026-10-19-readonly-disk-preview-design.md`.
+
+Implemented: one-shot Rust agent JSON request/response over inherited
+stdin/stdout; bounded request and reply; strict request ID/version/field
+validation; a 30-second total agent scan budget with per-worker remaining-time
+limits; renderer-safe metadata allowlist; Electron fixed-path spawn, 35-second
+parent timeout, output-size/schema/exit validation, and single-flight scan;
+trusted frame check; `agentConnected` remains false and both write
+capabilities remain false. The renderer starts idle, clears old rows on
+refresh, shows a separate non-selectable physical inventory, and keeps
+synthetic format/benchmark screens under a distinct Demo view. Package
+resources contain the Rust agent at `resources/agent/partition11-agent.exe`.
+
+Local evidence: `npm run build`; `npm run test:main` (37/37); Electron UI smoke
+(32 assertions; fake IPC; no automatic physical-device query); Rust fmt and
+Clippy; 18 core, 4 protocol, 1 deadline, 7 scan identity and 3 worker-timeout
+tests. Windows x64 release agent SHA-256:
+`A1438984F2E710F3727D3991B237097A08986A0A75A04C5E7D4A7B36E0CF7F8B`.
+Unsigned preview ZIP:
+`release/Partition-11-Windows-x64-preview.zip`, SHA-256
+`28BC80DCC16E56CF7B6EDF9F942C29467D787409D80B0141A9F74A3730C714F7`.
+The archive contains `Partition 11.exe`, `resources/app.asar`, and the current
+agent. The package's static agent capability command confirmed both write
+flags false; it did not run inventory mode.
+
+Screenshot capture was skipped locally after Electron `capturePage()` returned
+`UnknownVizError` in this environment. The hosted Windows screenshot workflow
+must still pass. No real physical device query, write, or Windows 11 acceptance
+was performed. The user's manual gate remains USB/NVMe/SATA, hotplug,
+BitLocker, and 512e/4Kn. No PR, push, or merge was done; these changes remain
+local and unmerged. Continue with a final review, then seek GitHub CI/PR
+authorization as required; do not perform physical-device acceptance.
+
+## 10. 2026-10-19 — independent inventory lifecycle review fixes
+
+The fresh review of the local inventory implementation found two important
+process-lifetime issues and two minor issues. The Electron service previously
+released its single-flight slot as soon as it requested child termination;
+it now retains that slot until `close`, including on timeout and oversized
+output. Stdin `EPIPE` is handled as a safe child failure. The stale agent
+module header now describes the Electron inventory protocol accurately.
+
+The Windows agent now arms its own 32-second hard deadline before reading the
+request or scanning. This is independent of Electron's 35-second watchdog and
+the cooperative 30-second scan budget; its dedicated worker already has its
+own 20-second hard deadline. Exit code 124 is mapped to a timeout in Electron.
+No job object or new dependency was added.
+
+Verification after the fixes: `npm run build`; `npm run test:main` (40/40);
+Windows UI smoke (32 assertions with fake IPC, no physical scan; local capture
+skipped); Rust fmt; warning-denying Clippy; core tests (18/18); targeted agent
+tests (1 hard-deadline, 4 protocol, 7 scan-identity, 4 timeout). The full agent
+suite was not run because it includes physical-device probes. `npm run
+package:win:dir` succeeded; packaged `capabilities` reports all inspect/write
+flags false. No inventory command or physical-device test was run.
+
+Updated unsigned x64 candidate:
+`release/Partition-11-Windows-x64-preview-reviewed.zip` (202,985,746 bytes),
+SHA-256 `854717F9274544CF961F4EDA96B8ED2BAAEFA4347FC430DEF6606C2C79F721658`.
+ZIP integrity and the hashes of `Partition 11.exe`, `resources/app.asar`, and
+`resources/agent/partition11-agent.exe` were checked against the unpacked
+package. It remains a local, unmerged preview; GitHub CI and the user's real
+Windows 11 USB/NVMe/SATA, hotplug, BitLocker and 512e/4Kn acceptance remain
+open.

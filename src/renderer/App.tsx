@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { FluentProvider, webDarkTheme, webLightTheme } from "@fluentui/react-components";
-import type { AppStatus, DisplayInfo } from "../shared/protocol";
+import type { AppStatus, DisplayInfo, ReadOnlyDisk, ReadOnlyDiskInventory } from "../shared/protocol";
 import { sampleDisks, validateExtLabel, type SampleDisk } from "./previewData";
 import { BenchmarkPanel } from "./BenchmarkPanel";
 import { BENCHMARK_PREVIEW_AVAILABILITY, type BenchmarkAvailability } from "../shared/benchmark";
 
 type ThemePreference = "system" | "light" | "dark";
+type AppView = "inventory" | "demo";
 type Glyph = "drive" | "usb" | "lock" | "moon" | "sun" | "shield" | "alert" | "sliders" | "chevron" | "check";
 const THEME_KEY = "partition11.theme";
 
@@ -105,11 +106,149 @@ function DiskSummary({ disk }: { disk: SampleDisk }) {
   );
 }
 
+function formatCapacity(bytes: string | null): string {
+  if (bytes === null) return "Bilinmiyor";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
+  let value = BigInt(bytes);
+  let unit = 0;
+  while (value >= 1024n && unit < units.length - 1) {
+    value /= 1024n;
+    unit += 1;
+  }
+  if (unit === 0) return `${value} B`;
+  const original = BigInt(bytes);
+  const divisor = 1024n ** BigInt(unit);
+  const tenths = (original * 10n + divisor / 2n) / divisor;
+  return `${tenths / 10n}.${tenths % 10n} ${units[unit]}`;
+}
+
+const BUS_LABELS: Record<string, string> = {
+  scsi: "SCSI", atapi: "ATAPI", ata: "ATA", ieee1394: "IEEE 1394", ssa: "SSA",
+  fibre: "Fibre Channel", usb: "USB", raid: "RAID", iscsi: "iSCSI", sas: "SAS",
+  sata: "SATA", sd: "SD", mmc: "MMC", virtual: "Sanal", nvme: "NVMe", scm: "SCM", ufs: "UFS"
+};
+
+function inventoryErrorText(error: Extract<ReadOnlyDiskInventory, { status: "error" }> ["error"]): string {
+  switch (error) {
+    case "agent_unavailable": return "Salt okunur disk agent’ı bulunamadı. Uygulama paketini kontrol edin.";
+    case "timeout": return "Disk taraması zaman sınırını aştı. Yenileyerek tekrar deneyebilirsiniz.";
+    case "invalid_response": return "Disk agent’ından güvenli olmayan veya geçersiz yanıt alındı.";
+    case "access_denied": return "Windows disk bilgilerine erişimi reddetti.";
+    case "agent_failure": return "Disk taraması tamamlanamadı.";
+  }
+}
+
+function diskAvailabilityText(disk: ReadOnlyDisk): string {
+  switch (disk.availability) {
+    case "ready": return "Bilgiler alındı";
+    case "access_denied": return "Erişim reddedildi";
+    case "device_unavailable": return "Aygıt kullanılamıyor";
+    case "unsupported": return "Bazı bilgiler desteklenmiyor";
+    case "identity_changed": return "Tarama sırasında aygıt listesi değişti";
+    case "scan_timeout": return "Aygıt yanıt vermedi";
+    case "agent_failure": return "Aygıt bilgileri alınamadı";
+  }
+}
+
+function DiskInventoryPanel() {
+  const [inventory, setInventory] = useState<ReadOnlyDiskInventory | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [bridgeUnavailable, setBridgeUnavailable] = useState(false);
+
+  async function refresh() {
+    if (loading) return;
+    setLoading(true);
+    setInventory(null); // Do not show rows from an earlier, possibly stale scan.
+    setBridgeUnavailable(false);
+    try {
+      if (!window.partition11?.getReadOnlyDiskInventory) {
+        setBridgeUnavailable(true);
+        return;
+      }
+      const result = await window.partition11.getReadOnlyDiskInventory();
+      setInventory(result);
+    } catch {
+      setInventory({ protocolVersion: 1, status: "error", error: "agent_failure" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="workspace inventory-workspace">
+      <div className="workspace-inner inventory-page">
+        <div className="page-heading">
+          <h1>Disk envanteri</h1>
+          <p>Windows’un gördüğü fiziksel disklerin salt okunur özeti.</p>
+        </div>
+        <section className="surface inventory-card" aria-labelledby="inventory-heading" aria-busy={loading}>
+          <div className="inventory-card-heading">
+            <div>
+              <h2 id="inventory-heading">Gerçek diskler</h2>
+              <p>Bu tarama disklerde değişiklik yapmaz ve ham sektör okumaz.</p>
+            </div>
+            <button type="button" className="inventory-refresh" onClick={() => void refresh()} disabled={loading}>
+              {loading ? "Taranıyor…" : inventory?.status === "ok" ? "Yenile" : "Diskleri görüntüle"}
+            </button>
+          </div>
+          <div className="inventory-results" aria-live="polite">
+            {loading && <p className="inventory-message" role="status">Disk bilgileri alınıyor. Eski sonuçlar temizlendi.</p>}
+            {!loading && bridgeUnavailable && <p className="inventory-message" role="status">Masaüstü disk agent’ı yalnız Windows uygulamasında kullanılabilir.</p>}
+            {!loading && !bridgeUnavailable && !inventory && (
+              <p className="inventory-message" data-testid="inventory-idle">Tarama başlatılmadı. Diskleri listelemek için düğmeye basın.</p>
+            )}
+            {!loading && inventory?.status === "error" && (
+              <p className="inventory-message inventory-error" role="alert">{inventoryErrorText(inventory.error)}</p>
+            )}
+            {!loading && inventory?.status === "ok" && inventory.disks.length === 0 && (
+              <p className="inventory-message" role="status">Windows fiziksel disk arayüzü bildirmedi.</p>
+            )}
+            {!loading && inventory?.status === "ok" && inventory.disks.length > 0 && (
+              <>
+                <p className="inventory-timestamp">Tarama: {new Date(inventory.scannedAt).toLocaleString()}</p>
+                <div className="inventory-list" role="list" aria-label="Salt okunur fiziksel diskler">
+                  {inventory.disks.map(disk => <DiskInventoryRow key={disk.ordinal} disk={disk}/>) }
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+        <p className="inventory-safety-note">Disk seçimi, biçimlendirme, benchmark, onarma ve yazma işlemleri bu test derlemesinde kapalıdır.</p>
+      </div>
+    </main>
+  );
+}
+
+function DiskInventoryRow({ disk }: { disk: ReadOnlyDisk }) {
+  const available = disk.availability === "ready";
+  return (
+    <article className="inventory-row" role="listitem" data-testid={`inventory-disk-${disk.ordinal}`}>
+      <div className="inventory-row-title">
+        <span className="inventory-row-icon"><Icon name="drive" size={22}/></span>
+        <div>
+          <h3>Disk {disk.ordinal}</h3>
+          <p>{diskAvailabilityText(disk)}</p>
+        </div>
+        <strong>{formatCapacity(disk.capacityBytes)}</strong>
+      </div>
+      <dl className="inventory-facts">
+        <div><dt>Bağlantı</dt><dd>{disk.busType ? BUS_LABELS[disk.busType] ?? "Bilinmiyor" : "Bilinmiyor"}</dd></div>
+        <div><dt>Mantıksal sektör</dt><dd>{disk.logicalSectorSize ? `${disk.logicalSectorSize} B` : "Bilinmiyor"}</dd></div>
+        <div><dt>Fiziksel sektör</dt><dd>{disk.physicalSectorSize ? `${disk.physicalSectorSize} B` : "Bilinmiyor"}</dd></div>
+        <div><dt>Bölüm stili</dt><dd>{disk.partitionStyle?.toUpperCase() ?? "Bilinmiyor"}</dd></div>
+        <div><dt>Bölüm sayısı</dt><dd>{disk.partitionCount ?? "Bilinmiyor"}</dd></div>
+      </dl>
+      {!available && <p className="inventory-row-note">Aygıt bilgileri eksik; bu satır işlem hedefi değildir.</p>}
+    </article>
+  );
+}
+
 export function App() {
   const systemDark = useSystemDark();
   const [preference, setPreference] = useState<ThemePreference>(initialTheme);
   const dark = preference === "dark" || (preference === "system" && systemDark);
   const [selectedId, setSelectedId] = useState(sampleDisks[0].id);
+  const [activeView, setActiveView] = useState<AppView>("inventory");
   const [activeScreen, setActiveScreen] = useState<"format" | "benchmark">("format");
   const [benchmarkAvailability, setBenchmarkAvailability] = useState<BenchmarkAvailability>(BENCHMARK_PREVIEW_AVAILABILITY);
   const [label, setLabel] = useState("LinuxData");
@@ -175,9 +314,13 @@ export function App() {
           <div className="topbar-brand">
             <span className="app-logo"><Icon name="drive" size={23}/></span>
             <span className="app-title">Partition 11</span>
-            <span className="preview-pill" title="Arayüz demonstrasyonu, gerçek disk erişimi yok">Önizleme</span>
+            <span className="preview-pill" title={activeView === "inventory" ? "Salt okunur gerçek disk envanteri" : "Sentetik demo verileri"}>{activeView === "inventory" ? "Salt okunur" : "Demo"}</span>
           </div>
           <div className="topbar-actions">
+            <div className="view-switch" role="group" aria-label="Uygulama görünümü">
+              <button type="button" className={activeView === "inventory" ? "active" : ""} aria-pressed={activeView === "inventory"} onClick={() => setActiveView("inventory")}>Disk envanteri</button>
+              <button type="button" className={activeView === "demo" ? "active" : ""} aria-pressed={activeView === "demo"} onClick={() => setActiveView("demo")}>Demo</button>
+            </div>
             <button type="button" className="theme-toggle" onClick={toggleTheme} title={dark ? "Açık temaya geç" : "Koyu temaya geç"} aria-label={dark ? "Açık temaya geç" : "Koyu temaya geç"} aria-pressed={dark}>
               <Icon name={dark ? "sun" : "moon"} size={20}/>
             </button>
@@ -185,7 +328,7 @@ export function App() {
           </div>
         </header>
 
-        <div className="main-layout">
+        {activeView === "inventory" ? <DiskInventoryPanel/> : <div className="main-layout">
           <aside className="sidebar" aria-labelledby="disk-list-heading">
             <div className="sidebar-title-row">
               <h2 id="disk-list-heading">Diskler</h2>
@@ -284,13 +427,13 @@ export function App() {
               </>)}
             </div>
           </main>
-        </div>
+        </div>}
 
         <footer className="statusbar">
           <div className="status-left"><span className={status && !bridgeUnavailable ? "status-dot connected" : "status-dot"}/>
-            <span>{bridgeUnavailable ? "Tarayıcı önizlemesi" : status ? "Hazır" : "Arayüz yükleniyor"} · {sampleDisks.filter(disk => !disk.protected).length} örnek kullanılabilir disk</span>
+            <span>{bridgeUnavailable ? "Tarayıcı önizlemesi" : status ? "Hazır" : "Arayüz yükleniyor"}{activeView === "inventory" ? " · Salt okunur envanter" : " · Örnek veriler"}</span>
           </div>
-          <div className="status-right">{appearanceError ? "Pencere başlığı teması eşitlenemedi · " : ""}{display ? "Ekran ölçeği: %" + Math.round(display.scaleFactor * 100) + " · " : ""}Arayüz önizlemesi · Gerçek disklere erişilmez</div>
+          <div className="status-right">{appearanceError ? "Pencere başlığı teması eşitlenemedi · " : ""}{display ? "Ekran ölçeği: %" + Math.round(display.scaleFactor * 100) + " · " : ""}{activeView === "inventory" ? "Yazma ve hedef seçimi kapalı" : "Sentetik demo · Gerçek disk erişimi yok"}</div>
         </footer>
       </div>
     </FluentProvider>

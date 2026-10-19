@@ -313,3 +313,38 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .workspace-tabs button.active { color: var(--p11-text); background: var(--p11-panel); box-shadow: 0 1px 4px #00000011; }
 .workspace-tabs button:hover:not(.active) { background: var(--colorNeutralBackground3Hover); }
 @media (max-width: 560px) { .workspace-tabs { display: flex; width: 100%; } .workspace-tabs button { flex: 1; padding: 10px 12px; } }
+
+/* Read-only physical disk inventory. Real rows are static articles, never controls. */
+.view-switch { display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid var(--p11-border); border-radius: 9px; background: var(--p11-input-bg); -webkit-app-region: no-drag; }
+.view-switch button { border: 0; border-radius: 6px; padding: 8px 12px; color: var(--p11-secondary); background: transparent; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.view-switch button.active { color: var(--p11-text); background: var(--p11-panel); box-shadow: 0 1px 4px #00000011; }
+.view-switch button:hover:not(.active) { background: var(--colorNeutralBackground3Hover); }
+.inventory-workspace { overflow: auto; }
+.inventory-page { max-width: 1060px; padding-top: 58px; }
+.inventory-card { padding: 26px 28px 28px; }
+.inventory-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 21px; border-bottom: 1px solid var(--p11-border); }
+.inventory-card-heading h2 { color: var(--p11-text); font-size: 19px; font-weight: 645; margin: 0 0 7px; }
+.inventory-card-heading p { color: var(--p11-secondary); font-size: 14px; margin: 0; }
+.inventory-refresh { min-height: 40px; border: 0; border-radius: 8px; padding: 0 17px; color: #fff; background: var(--p11-blue); font-size: 13px; font-weight: 650; white-space: nowrap; -webkit-app-region: no-drag; }
+.inventory-refresh:hover:not(:disabled) { filter: brightness(.95); }
+.inventory-refresh:disabled { opacity: .68; }
+.inventory-results { padding-top: 19px; }
+.inventory-message { color: var(--p11-secondary); margin: 0; padding: 15px 4px; }
+.inventory-error { color: var(--colorPaletteRedForeground1); }
+.inventory-timestamp { margin: 0 0 13px; color: var(--p11-secondary); font-size: 12px; }
+.inventory-list { display: grid; gap: 13px; }
+.inventory-row { border: 1px solid var(--p11-border); border-radius: 10px; padding: 18px 20px; background: var(--p11-input-bg); }
+.inventory-row-title { display: flex; align-items: center; gap: 14px; }
+.inventory-row-icon { display: grid; place-items: center; width: 43px; height: 43px; flex: none; border-radius: 10px; color: var(--p11-blue); background: var(--p11-blue-faint); }
+.inventory-row-title h3 { color: var(--p11-text); font-size: 16px; font-weight: 650; margin: 0 0 4px; }
+.inventory-row-title p { color: var(--p11-secondary); font-size: 12px; margin: 0; }
+.inventory-row-title > strong { margin-left: auto; color: var(--p11-text); font-size: 16px; white-space: nowrap; }
+.inventory-facts { display: grid; grid-template-columns: repeat(5, minmax(90px, 1fr)); gap: 15px; margin: 18px 0 0 57px; }
+.inventory-facts div { min-width: 0; }
+.inventory-facts dt { color: var(--p11-secondary); font-size: 11px; margin-bottom: 5px; }
+.inventory-facts dd { color: var(--p11-text); font-size: 13px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+.inventory-row-note, .inventory-safety-note { color: var(--p11-secondary); font-size: 12px; }
+.inventory-row-note { margin: 14px 0 0 57px; }
+.inventory-safety-note { margin: 16px 2px 0; }
+@media (max-width: 850px) { .inventory-facts { grid-template-columns: repeat(3, minmax(90px, 1fr)); } .inventory-page { padding: 34px 25px 25px; } }
+@media (max-width: 600px) { .inventory-card { padding: 18px 16px; } .inventory-card-heading { align-items: flex-start; flex-direction: column; } .inventory-facts { grid-template-columns: repeat(2, minmax(80px, 1fr)); margin-left: 0; } .inventory-row-title > strong { font-size: 14px; } .inventory-row-note { margin-left: 0; } .view-switch button { padding: 8px 7px; font-size: 11px; } .window-control-spacer { width: 36px; } }
