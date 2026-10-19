@@ -32,11 +32,15 @@ mod pnp_notifications;
 mod scan_identity;
 
 use partition11_core::PHASE_0_CAPABILITIES;
+#[cfg(windows)]
 use std::thread::JoinHandle;
+#[cfg(windows)]
 use std::time::Duration;
 
+#[cfg(windows)]
 const INVENTORY_HARD_DEADLINE: Duration = Duration::from_secs(32);
 
+#[cfg(windows)]
 fn spawn_hard_deadline(
     timeout: Duration,
     on_expire: impl FnOnce() + Send + 'static,
@@ -181,7 +185,7 @@ fn main() {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod hard_deadline_tests {
     use super::spawn_hard_deadline;
     use std::sync::mpsc;
