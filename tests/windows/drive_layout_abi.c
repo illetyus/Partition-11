@@ -52,8 +52,11 @@ ABI_CHECK(offsetof(SP_DEVINFO_DATA, Reserved) == 24, "PnP reserved pointer offse
 
 ABI_CHECK(sizeof(PARTITION_INFORMATION_GPT) == 112, "GPT partition union arm changed");
 ABI_CHECK(sizeof(PARTITION_INFORMATION_MBR) <= sizeof(PARTITION_INFORMATION_GPT), "MBR union cannot extend past GPT union");
-/* MBR union-arm size is SDK-revision dependent; the parser reads only
- * its first PartitionType byte, which is checked through union offset. */
+/* MBR union-arm size is SDK-revision dependent; these are the exact fields
+ * consumed by the parser, checked against the SDK declarations. */
+ABI_CHECK(offsetof(PARTITION_INFORMATION_MBR, PartitionType) == 0, "MBR type offset within union");
+ABI_CHECK(offsetof(PARTITION_INFORMATION_MBR, BootIndicator) == 1, "MBR boot indicator offset within union");
+ABI_CHECK(sizeof(((PARTITION_INFORMATION_GPT *)0)->PartitionType) == 16, "GPT type GUID size changed");
 ABI_CHECK(sizeof(PARTITION_INFORMATION_EX) == 144, "Rust ENTRY_BYTES must be updated");
 ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, PartitionStyle) == 0, "entry style offset");
 /* Some SDK reference pages show PartitionOrdinal; the x64 Windows SDK
@@ -65,6 +68,9 @@ ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, RewritePartition) == 28, "entry rew
 ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, IsServicePartition) == 29, "entry service offset");
 ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, Gpt) == 32, "entry GPT union offset");
 ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, Mbr) == 32, "entry MBR union offset");
+ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, Gpt) + offsetof(PARTITION_INFORMATION_GPT, PartitionType) == 32, "entry GPT type GUID offset");
+ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, Mbr) + offsetof(PARTITION_INFORMATION_MBR, PartitionType) == 32, "entry MBR type offset");
+ABI_CHECK(offsetof(PARTITION_INFORMATION_EX, Mbr) + offsetof(PARTITION_INFORMATION_MBR, BootIndicator) == 33, "entry MBR boot indicator offset");
 ABI_CHECK(sizeof(DRIVE_LAYOUT_INFORMATION_GPT) == 40, "drive GPT union arm changed");
 ABI_CHECK(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionStyle) == 0, "layout style offset");
 ABI_CHECK(offsetof(DRIVE_LAYOUT_INFORMATION_EX, PartitionCount) == 4, "layout count offset");

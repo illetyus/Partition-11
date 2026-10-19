@@ -40,6 +40,46 @@ pub struct PartitionRange {
     pub offset: u64,
     pub length: u64,
     pub service: bool,
+    pub partition_type: PartitionType,
+}
+
+impl PartitionRange {
+    pub fn is_protected_for_benchmark(&self) -> bool {
+        self.service || self.partition_type.is_protected_for_benchmark()
+    }
+}
+
+/// Partition format-specific metadata returned by PARTITION_INFORMATION_EX.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PartitionType {
+    Mbr {
+        type_id: u8,
+        boot_indicator: bool,
+    },
+    /// Raw Windows GUID ABI bytes (the first three GUID fields are little-endian).
+    Gpt([u8; 16]),
+}
+
+impl PartitionType {
+    /// Conservative boot/recovery classes that make a containing disk
+    /// ineligible as a file-benchmark target.
+    pub fn is_protected_for_benchmark(self) -> bool {
+        match self {
+            Self::Mbr {
+                type_id,
+                boot_indicator,
+            } => boot_indicator || matches!(type_id, 0x27 | 0xef),
+            Self::Gpt(guid) => matches!(
+                guid,
+                // EFI System Partition: C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+                [0x28, 0x73, 0x2a, 0xc1, 0x1f, 0xf8, 0xd2, 0x11, 0xba, 0x4b, 0x00, 0xa0, 0xc9, 0x3e, 0xc9, 0x3b]
+                    // Microsoft Reserved: E3C9E316-0B5C-4DB8-817D-F92DF00215AE
+                    | [0x16, 0xe3, 0xc9, 0xe3, 0x5c, 0x0b, 0xb8, 0x4d, 0x81, 0x7d, 0xf9, 0x2d, 0xf0, 0x02, 0x15, 0xae]
+                    // Microsoft Recovery: DE94BBA4-06D1-4D40-A16A-BFD50179D6AC
+                    | [0xa4, 0xbb, 0x94, 0xde, 0xd1, 0x06, 0x40, 0x4d, 0xa1, 0x6a, 0xbf, 0xd5, 0x01, 0x79, 0xd6, 0xac]
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,6 +186,18 @@ pub fn parse_drive_layout(
         if style == LayoutStyle::Gpt && entry[32..48].iter().all(|b| *b == 0) {
             return Err(LayoutError::InvalidGeometry);
         }
+        let partition_type = match style {
+            LayoutStyle::Mbr => PartitionType::Mbr {
+                type_id: entry[32],
+                boot_indicator: entry[33] != 0,
+            },
+            LayoutStyle::Gpt => PartitionType::Gpt(
+                entry[32..48]
+                    .try_into()
+                    .map_err(|_| LayoutError::Truncated)?,
+            ),
+            LayoutStyle::Raw => return Err(LayoutError::InvalidGeometry),
+        };
         if !numbers.insert(number) {
             return Err(LayoutError::DuplicateNumber);
         }
@@ -154,6 +206,7 @@ pub fn parse_drive_layout(
             offset,
             length: size,
             service,
+            partition_type,
         });
     }
     occupied.sort_by_key(|part| part.offset);
@@ -291,5 +344,68 @@ mod tests {
             parse_drive_layout(&fixture(RAW, 1), 65_536, None),
             Err(LayoutError::InvalidGeometry)
         );
+    }
+
+    #[test]
+    fn identifies_boot_and_recovery_partition_types_for_benchmark_protection() {
+        let mut bytes = fixture(GPT, 4);
+        let types = [
+            // Windows GUID memory layout for EFI System, Microsoft Reserved,
+            // Microsoft Recovery, then an ordinary Basic Data partition.
+            [
+                0x28, 0x73, 0x2a, 0xc1, 0x1f, 0xf8, 0xd2, 0x11, 0xba, 0x4b, 0x00, 0xa0, 0xc9, 0x3e,
+                0xc9, 0x3b,
+            ],
+            [
+                0x16, 0xe3, 0xc9, 0xe3, 0x5c, 0x0b, 0xb8, 0x4d, 0x81, 0x7d, 0xf9, 0x2d, 0xf0, 0x02,
+                0x15, 0xae,
+            ],
+            [
+                0xa4, 0xbb, 0x94, 0xde, 0xd1, 0x06, 0x40, 0x4d, 0xa1, 0x6a, 0xbf, 0xd5, 0x01, 0x79,
+                0xd6, 0xac,
+            ],
+            [
+                0xa2, 0xa0, 0xd0, 0xeb, 0xe5, 0xb9, 0x33, 0x44, 0x87, 0xc0, 0x68, 0xb6, 0xb7, 0x26,
+                0x99, 0xc7,
+            ],
+        ];
+        for (index, partition_type) in types.iter().enumerate() {
+            let offset = 4096 + index as i64 * 8192;
+            entry(&mut bytes, index, GPT, index as u32 + 1, offset, 4096);
+            let start = HEADER_BYTES + ENTRY_BYTES * index;
+            bytes[start + 32..start + 48].copy_from_slice(partition_type);
+        }
+
+        let layout = parse_drive_layout(&bytes, 65_536, Some(512)).unwrap();
+        assert!(layout.occupied[0].is_protected_for_benchmark());
+        assert!(layout.occupied[1].is_protected_for_benchmark());
+        assert!(layout.occupied[2].is_protected_for_benchmark());
+        assert!(!layout.occupied[3].is_protected_for_benchmark());
+
+        let mut mbr = fixture(MBR, 4);
+        entry(&mut mbr, 0, MBR, 1, 4096, 4096);
+        let start = HEADER_BYTES;
+        mbr[start + 32] = 0x27; // Windows recovery partition.
+        let recovery = parse_drive_layout(&mbr, 65_536, Some(512)).unwrap();
+        assert!(recovery.occupied[0].is_protected_for_benchmark());
+
+        mbr[start + 32] = 0x07; // Ordinary NTFS/exFAT data partition type.
+        let ordinary = parse_drive_layout(&mbr, 65_536, Some(512)).unwrap();
+        assert!(!ordinary.occupied[0].is_protected_for_benchmark());
+
+        mbr[start + 32] = 0xef; // MBR EFI system partition.
+        let efi = parse_drive_layout(&mbr, 65_536, Some(512)).unwrap();
+        assert!(efi.occupied[0].is_protected_for_benchmark());
+
+        mbr[start + 32] = 0x07;
+        mbr[start + 33] = 1; // Active/bootable MBR partition.
+        let boot = parse_drive_layout(&mbr, 65_536, Some(512)).unwrap();
+        assert!(boot.occupied[0].is_protected_for_benchmark());
+
+        let mut service = fixture(GPT, 1);
+        entry(&mut service, 0, GPT, 1, 4096, 4096);
+        service[HEADER_BYTES + 29] = 1;
+        let service_layout = parse_drive_layout(&service, 65_536, Some(512)).unwrap();
+        assert!(service_layout.occupied[0].is_protected_for_benchmark());
     }
 }
