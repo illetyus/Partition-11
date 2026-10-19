@@ -653,10 +653,7 @@ mod tests {
     fn remove_pending_closes_idle_handle_without_veto() {
         let generation = ScanGeneration::default();
         let state = DeviceHandleState::for_test(0x1234);
-        let context = Box::new(DeviceHandleContext::for_test(
-            generation,
-            state.clone(),
-        ));
+        let context = Box::new(DeviceHandleContext::for_test(generation, state.clone()));
         let pointer = (&*context as *const DeviceHandleContext)
             .cast_mut()
             .cast::<c_void>();
