@@ -23,6 +23,14 @@ PR kontrolleri ve yeni `main` kontrolleri **5/5 başarılı**.
 [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39195989174).
 Tasarım ve kabul sınırları: [P2_I2C_BOUNDED_IO.md](P2_I2C_BOUNDED_IO.md).
 
+**Son dokümantasyon checkpoint'i:** [PR #47](https://github.com/illetyus/Partition-11/pull/47)
+`fde9b24193eab4c32ecb1610c3eb00af8b31b3d0` commit'i olarak birleşti;
+yeni `main` kontrolleri **5/5 başarılı**: [CI](https://github.com/illetyus/Partition-11/actions/runs/39197425292),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39197425330),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39197425310).
+Issue #31 item 2 kanıtıyla güncellendi ve donanım kimliği, fiziksel Windows 11
+kabulü ile authenticated salt-okunur IPC/UI için açık bırakıldı.
+
 **Açık kalanlar:** kalıcı donanım kimliği, hızlı çıkar/tak yarışları,
 gerçek Windows 11 USB/NVMe/SATA/BitLocker/512e/4Kn kabulü ve authenticated
 salt-okunur agent IPC/UI. Bunlar [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
