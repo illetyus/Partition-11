@@ -30,6 +30,14 @@ mod overlapped_ioctl;
 mod pnp_notifications;
 #[cfg(windows)]
 mod scan_identity;
+#[cfg(any(windows, test))]
+mod volume_eligibility;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod volume_inventory;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod volume_mapping;
 
 use partition11_core::PHASE_0_CAPABILITIES;
 #[cfg(windows)]
@@ -98,7 +106,7 @@ fn main() {
                     let mut layouts = 0_usize;
                     let mut verified_partitions = 0_usize;
                     let mut unavailable = 0_usize;
-                    for result in &results {
+                    for result in &results.disks {
                         match result {
                             disk_metadata::ProbeOutcome::Ready(metadata) => {
                                 // Device number is only a temporary OS label.
@@ -124,7 +132,7 @@ fn main() {
                     }
                     println!(
                         r#"{{"protocol_version":1,"mode":"diagnostic-only","disk_interface_count":{},"temporarily_opened":{},"capacity_known":{},"logical_sector_known":{},"physical_sector_known":{},"bus_type_known":{},"layout_known":{},"verified_partition_count":{},"unavailable":{},"ui_disk_access_enabled":false}}"#,
-                        results.len(),
+                        results.disks.len(),
                         opened,
                         capacities,
                         logical_sectors,
@@ -155,7 +163,7 @@ fn main() {
             let response = match disk_metadata::inspect_discovered_devices_with_timeout(
                 std::time::Duration::from_secs(30),
             ) {
-                Ok(disks) => inventory_protocol::encode_success(&request, &disks),
+                Ok(inventory) => inventory_protocol::encode_success(&request, &inventory),
                 Err(disk_metadata::ScanError::TimedOut) => {
                     Ok(inventory_protocol::encode_failure(&request, "scan_timeout"))
                 }

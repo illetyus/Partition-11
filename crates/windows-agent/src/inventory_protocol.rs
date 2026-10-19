@@ -11,7 +11,7 @@ use std::io::{Read, Write};
 
 pub(crate) const MAX_REQUEST_BYTES: usize = 1_024;
 pub(crate) const MAX_RESPONSE_BYTES: usize = 256 * 1_024;
-const PROTOCOL_VERSION: u64 = 1;
+const PROTOCOL_VERSION: u64 = 2;
 const OPERATION: &str = "inspectPhysicalDisks";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,16 +214,17 @@ fn write_optional<T: std::fmt::Display>(out: &mut String, value: Option<T>) {
 
 pub(crate) fn encode_success(
     request: &InventoryRequest,
-    disks: &[ProbeOutcome],
+    inventory: &crate::disk_metadata::ReadOnlyInventory,
 ) -> Result<Vec<u8>, RequestError> {
-    let mut out = String::with_capacity(128 + disks.len() * 192);
+    let mut out =
+        String::with_capacity(256 + inventory.disks.len() * 192 + inventory.volumes.len() * 256);
     use std::fmt::Write as _;
     let _ = write!(
         out,
-        "{{\"protocolVersion\":1,\"requestId\":\"{}\",\"ok\":true,\"disks\":[",
+        "{{\"protocolVersion\":2,\"requestId\":\"{}\",\"ok\":true,\"disks\":[",
         request.request_id
     );
-    for (index, outcome) in disks.iter().enumerate() {
+    for (index, outcome) in inventory.disks.iter().enumerate() {
         if index != 0 {
             out.push(',');
         }
@@ -294,6 +295,50 @@ pub(crate) fn encode_success(
             return Err(RequestError::Oversize);
         }
     }
+    out.push_str("],\"volumes\":[");
+    for (index, volume) in inventory.volumes.iter().enumerate() {
+        if index != 0 {
+            out.push(',');
+        }
+        let ordinal = index + 1;
+        let _ = write!(out, "{{\"ordinal\":{ordinal},\"mountPoint\":");
+        if let Some(mount_point) = volume.mount_point.as_deref() {
+            if !valid_drive_root(mount_point) {
+                return Err(RequestError::Malformed);
+            }
+            let _ = write!(out, "\"{}\"", mount_point.replace('\\', "\\\\"));
+        } else {
+            out.push_str("null");
+        }
+        let _ = write!(
+            out,
+            ",\"driveType\":\"{}\",\"fileSystem\":",
+            drive_type_name(volume.drive_type)
+        );
+        if let Some(file_system) = volume.file_system.as_deref().and_then(public_file_system) {
+            let _ = write!(out, "\"{file_system}\"");
+        } else {
+            out.push_str("null");
+        }
+        out.push_str(",\"totalBytes\":");
+        write_optional_string(&mut out, volume.total_bytes);
+        out.push_str(",\"availableBytes\":");
+        write_optional_string(&mut out, volume.available_bytes);
+        let _ = write!(
+            out,
+            ",\"readOnly\":{},\"eligible\":{},\"eligibilityReason\":\"{}\",\"diskOrdinal\":",
+            volume.read_only,
+            volume.assessment.eligible,
+            volume.assessment.reason.as_str()
+        );
+        write_optional(&mut out, volume.assessment.disk_ordinal);
+        out.push_str(",\"partitionNumber\":");
+        write_optional(&mut out, volume.assessment.partition_number);
+        out.push('}');
+        if out.len() > MAX_RESPONSE_BYTES {
+            return Err(RequestError::Oversize);
+        }
+    }
     out.push_str("]}");
     if out.len() > MAX_RESPONSE_BYTES {
         return Err(RequestError::Oversize);
@@ -301,9 +346,42 @@ pub(crate) fn encode_success(
     Ok(out.into_bytes())
 }
 
+fn valid_drive_root(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 3 && bytes[0].is_ascii_alphabetic() && bytes[1..] == *b":\\"
+}
+
+fn write_optional_string(out: &mut String, value: Option<u64>) {
+    if let Some(value) = value {
+        use std::fmt::Write as _;
+        let _ = write!(out, "\"{value}\"");
+    } else {
+        out.push_str("null");
+    }
+}
+
+fn drive_type_name(value: crate::volume_eligibility::DriveType) -> &'static str {
+    use crate::volume_eligibility::DriveType;
+    match value {
+        DriveType::Unknown => "unknown",
+        DriveType::NoRoot => "no_root",
+        DriveType::Removable => "removable",
+        DriveType::Fixed => "fixed",
+        DriveType::Remote => "remote",
+        DriveType::Cdrom => "cdrom",
+        DriveType::Ramdisk => "ramdisk",
+    }
+}
+
+fn public_file_system(value: &str) -> Option<&'static str> {
+    ["NTFS", "ReFS", "exFAT", "FAT", "FAT32"]
+        .into_iter()
+        .find(|allowed| value.eq_ignore_ascii_case(allowed))
+}
+
 pub(crate) fn encode_failure(request: &InventoryRequest, code: &'static str) -> Vec<u8> {
     format!(
-        "{{\"protocolVersion\":1,\"requestId\":\"{}\",\"ok\":false,\"error\":\"{code}\"}}",
+        "{{\"protocolVersion\":2,\"requestId\":\"{}\",\"ok\":false,\"error\":\"{code}\"}}",
         request.request_id
     )
     .into_bytes()
@@ -331,8 +409,8 @@ mod tests {
     #[test]
     fn accepts_only_the_versioned_inventory_request_and_any_key_order() {
         let compact =
-            br#"{"protocolVersion":1,"operation":"inspectPhysicalDisks","requestId":"test-1234"}"#;
-        let reordered = br#" { "requestId" : "test-1234", "operation" : "inspectPhysicalDisks", "protocolVersion": 1 } "#;
+            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"test-1234"}"#;
+        let reordered = br#" { "requestId" : "test-1234", "operation" : "inspectPhysicalDisks", "protocolVersion": 2 } "#;
         assert_eq!(parse_request(compact).unwrap(), request());
         assert_eq!(parse_request(reordered).unwrap(), request());
     }
@@ -340,14 +418,14 @@ mod tests {
     #[test]
     fn rejects_unknown_duplicate_missing_escaped_and_invalid_fields() {
         let samples: &[&[u8]] = &[
-            br#"{"protocolVersion":1,"operation":"inspectPhysicalDisks","requestId":"x","path":"disk0"}"#,
-            br#"{"protocolVersion":1,"protocolVersion":1,"operation":"inspectPhysicalDisks","requestId":"x"}"#,
-            br#"{"protocolVersion":1,"operation":"inspectPhysicalDisks"}"#,
-            br#"{"protocolVersion":1,"operation":"inspectPhysicalDisks","requestId":"bad\\u002dID"}"#,
-            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"x"}"#,
-            br#"{"protocolVersion":1,"operation":"metadata-summary","requestId":"x"}"#,
-            br#"{"protocolVersion":1,"operation":"inspectPhysicalDisks","requestId":"x\ny"}"#,
-            b"{\x0b\"protocolVersion\":1,\"operation\":\"inspectPhysicalDisks\",\"requestId\":\"x\"}",
+            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"x","path":"disk0"}"#,
+            br#"{"protocolVersion":2,"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"x"}"#,
+            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks"}"#,
+            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"bad\\u002dID"}"#,
+            br#"{"protocolVersion":1,"operation":"inspectPhysicalDisks","requestId":"x"}"#,
+            br#"{"protocolVersion":2,"operation":"metadata-summary","requestId":"x"}"#,
+            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"x\ny"}"#,
+            b"{\x0b\"protocolVersion\":2,\"operation\":\"inspectPhysicalDisks\",\"requestId\":\"x\"}",
         ];
         for sample in samples {
             assert_eq!(parse_request(sample), Err(RequestError::Malformed));
@@ -378,7 +456,14 @@ mod tests {
                 returned_slots: 128,
             }),
         };
-        let bytes = encode_success(&request(), &[ProbeOutcome::Ready(metadata)]).unwrap();
+        let bytes = encode_success(
+            &request(),
+            &crate::disk_metadata::ReadOnlyInventory {
+                disks: vec![ProbeOutcome::Ready(metadata)],
+                volumes: Vec::new(),
+            },
+        )
+        .unwrap();
         let json = String::from_utf8(bytes).unwrap();
         assert!(json.contains("\"capacityBytes\":\"1000000\""));
         assert!(json.contains("\"busType\":\"nvme\""));
@@ -388,5 +473,6 @@ mod tests {
         assert!(!json.contains("serial"));
         assert!(!json.contains("path"));
         assert!(!json.contains("instance"));
+        assert!(json.contains("\"volumes\":[]"));
     }
 }

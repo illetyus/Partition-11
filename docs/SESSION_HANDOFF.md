@@ -1,5 +1,25 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-19)
 
+## YEREL DEVAM NOKTASI — P2.5B.4 volume uygunluk ön kontrolü
+
+Çalışma dalı `feature/p2.5-volume-eligibility-policy`, tabanı canlı
+`origin/main`. Yerel kod, sabit ve süre sınırları olan PowerShell/CIM sorgusu
+ile drive-letter → partition eşlemesi yapıyor; WMI eşlemesini mevcut Windows
+disk layout verisiyle doğruluyor ve aynı taramada ikinci kez kontrol ediyor.
+Volume GUID yolu Renderer’a geçmiyor. Windows sistem diski, boot/korunan,
+belirsiz mount’lu, desteklenmeyen veya alanı az volume’ler fail-closed
+reddediliyor. Volume handle/`IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` yolu
+kullanılmıyor; Microsoft doğrudan volume erişimi için administrator yetkisi
+belgeliyor, uygulama ise elevation reddediyor.
+
+Doğrulama: Rust agent **94 test geçti**, bir gerçek envanter testi bilerek atlandı; workspace Clippy ve x64 Windows release agent build geçti; TypeScript typecheck, production Electron build ve main-process testleri (**42/42**) geçti. Windows UI smoke **45 assertion, 11 screenshot, 0 hata** ile geçti; yalnız statik mock disk/volume kullanıyor ve açılışta gerçek tarama olmadığını doğruluyor. Fiziksel Windows 11 kabul testi çalıştırılmadı; bunu kullanıcı yapacak.
+
+Son incelemede bloklayıcı kusur bulunmadı. Çalışma dalı yerel; PR ve GitHub CI henüz yok.
+
+Sıradaki adım: PR açıp zorunlu CI kontrollerini tamamlamak. Kontroller yeşil olduktan sonra merge için kullanıcı onayı alınacak. Kalan P2.5 kapıları: sahipliği doğrulanan scratch dosyası, sabitlenmiş DiskSpd, açık kullanıcı onayı, tam süreç ağacı iptali ve metrik doğrulaması. Fiziksel Windows 11 testi kullanıcıya ait.
+
+---
+
 ## EN YENİ MERGED CHECKPOINT — P2.5B.3 korunan bölüm türleri
 
 PR #51, `86f151b` değişikliğiyle `eb2d932abdb492a040232fbbc3bc81ae558ce467`

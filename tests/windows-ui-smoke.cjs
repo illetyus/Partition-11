@@ -95,7 +95,7 @@ function bridge() {
   ipcMain.handle("partition11:read-only-disk-inventory", () => {
     inventoryRequests += 1;
     return {
-      protocolVersion: 1,
+      protocolVersion: 2,
       status: "ok",
       scannedAt: "2026-10-19T12:00:00.000Z",
       disks: [{
@@ -107,6 +107,20 @@ function bridge() {
         busType: "usb",
         partitionStyle: "gpt",
         partitionCount: 2
+      }],
+      volumes: [{
+        ordinal: 1,
+        mountPoint: "E:\\",
+        driveType: "removable",
+        fileSystem: "exFAT",
+        totalBytes: "64000000000",
+        availableBytes: "32000000000",
+        readOnly: false,
+        eligible: false,
+        eligibilityReason: "system_volume_unknown",
+        diskOrdinal: null,
+        partitionNumber: null,
+        selectionToken: null
       }]
     };
   });
@@ -154,6 +168,8 @@ async function main() {
   check(await js("document.querySelectorAll('.inventory-row button').length === 0"), "Real inventory rows are not selectable controls");
   check(await js("document.querySelector('[data-testid=\"inventory-disk-1\"]')?.textContent.includes('USB')"), "Inventory displays the mock USB bus independently");
   check(await js("document.querySelector('.inventory-row')?.textContent.includes('64.0 GiB')"), "Disk capacity is rendered from the allowlisted metadata");
+  check(await js("document.querySelector('[data-testid=\"inventory-volume-1\"]')?.textContent.includes('E:\\\\')"), "Sanitized mock volume metadata is rendered");
+  check(await js("document.querySelector('[data-testid=\"inventory-volume-1\"]')?.textContent.includes('Windows sistem diski doğrulanamadı')"), "Unverified system-disk mapping stays ineligible");
   await snap("02-readonly-inventory");
 
   await js("document.querySelector('.view-switch button:nth-child(2)').click()");

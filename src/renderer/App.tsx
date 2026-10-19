@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { FluentProvider, webDarkTheme, webLightTheme } from "@fluentui/react-components";
-import type { AppStatus, DisplayInfo, ReadOnlyDisk, ReadOnlyDiskInventory } from "../shared/protocol";
+import type { AppStatus, DisplayInfo, ReadOnlyDisk, ReadOnlyDiskInventory, ReadOnlyVolume } from "../shared/protocol";
 import { sampleDisks, validateExtLabel, type SampleDisk } from "./previewData";
 import { BenchmarkPanel } from "./BenchmarkPanel";
 import { BENCHMARK_PREVIEW_AVAILABILITY, type BenchmarkAvailability } from "../shared/benchmark";
@@ -138,6 +138,31 @@ function inventoryErrorText(error: Extract<ReadOnlyDiskInventory, { status: "err
   }
 }
 
+function volumeEligibilityText(volume: ReadOnlyVolume): string {
+  if (volume.eligible) return "Ön kontrolde uygun görünüyor · Benchmark kapalı";
+  switch (volume.eligibilityReason) {
+    case "system_volume": return "Windows sistem diski korumalı";
+    case "system_volume_unknown": return "Windows sistem diski doğrulanamadı";
+    case "no_drive_letter_mount": return "Sürücü harfiyle bağlı değil";
+    case "ambiguous_mount": return "Birden fazla veya belirsiz bağlama noktası";
+    case "unsupported_drive_type": return "Yerel sabit/çıkarılabilir birim değil";
+    case "unsupported_filesystem": return "Dosya sistemi desteklenmiyor";
+    case "read_only": return "Salt okunur birim";
+    case "missing_space_metadata": return "Boş alan bilgisi alınamadı";
+    case "insufficient_space": return "En az 2 GiB boş alan gerekli";
+    case "multiple_extents": return "Birden fazla disk bölümüne yayılıyor";
+    case "missing_extents": return "Disk eşleşmesi alınamadı";
+    case "invalid_extent": return "Birim aralığı geçersiz";
+    case "unknown_disk": return "Fiziksel disk eşleşmesi doğrulanamadı";
+    case "ambiguous_disk": return "Disk eşleşmesi belirsiz";
+    case "boot_disk": return "Önyükleme diski korumalı";
+    case "partition_unmapped": return "Bölüm eşleşmesi doğrulanamadı";
+    case "protected_partition": return "Sistem/kurtarma bölümü korumalı";
+    case "unsupported_partition": return "Bölüm türü desteklenmiyor";
+    case "eligible": return "Ön kontrolde uygun görünüyor · Benchmark kapalı";
+  }
+}
+
 function diskAvailabilityText(disk: ReadOnlyDisk): string {
   switch (disk.availability) {
     case "ready": return "Bilgiler alındı";
@@ -168,7 +193,7 @@ function DiskInventoryPanel() {
       const result = await window.partition11.getReadOnlyDiskInventory();
       setInventory(result);
     } catch {
-      setInventory({ protocolVersion: 1, status: "error", error: "agent_failure" });
+      setInventory({ protocolVersion: 2, status: "error", error: "agent_failure" });
     } finally {
       setLoading(false);
     }
@@ -200,14 +225,27 @@ function DiskInventoryPanel() {
             {!loading && inventory?.status === "error" && (
               <p className="inventory-message inventory-error" role="alert">{inventoryErrorText(inventory.error)}</p>
             )}
-            {!loading && inventory?.status === "ok" && inventory.disks.length === 0 && (
-              <p className="inventory-message" role="status">Windows fiziksel disk arayüzü bildirmedi.</p>
+            {!loading && inventory?.status === "ok" && inventory.disks.length === 0 && inventory.volumes.length === 0 && (
+              <p className="inventory-message" role="status">Windows fiziksel disk veya bağlı birim bildirmedi.</p>
             )}
-            {!loading && inventory?.status === "ok" && inventory.disks.length > 0 && (
+            {!loading && inventory?.status === "ok" && (
               <>
                 <p className="inventory-timestamp">Tarama: {new Date(inventory.scannedAt).toLocaleString()}</p>
-                <div className="inventory-list" role="list" aria-label="Salt okunur fiziksel diskler">
-                  {inventory.disks.map(disk => <DiskInventoryRow key={disk.ordinal} disk={disk}/>) }
+                {inventory.disks.length > 0 && (
+                  <div className="inventory-list" role="list" aria-label="Salt okunur fiziksel diskler">
+                    {inventory.disks.map(disk => <DiskInventoryRow key={disk.ordinal} disk={disk}/>) }
+                  </div>
+                )}
+                <div className="inventory-volume-section">
+                  <div className="inventory-volume-heading">
+                    <h2>Windows birimleri</h2>
+                    <p>Salt okunur uygunluk ön kontrolü. Benchmark bu derlemede kapalıdır.</p>
+                  </div>
+                  {inventory.volumes.length === 0
+                    ? <p className="inventory-message" role="status">Sürücü harfiyle bağlı birim bulunamadı.</p>
+                    : <div className="inventory-list" role="list" aria-label="Salt okunur Windows birimleri">
+                      {inventory.volumes.map(volume => <VolumeInventoryRow key={volume.ordinal} volume={volume}/>)}
+                    </div>}
                 </div>
               </>
             )}
@@ -216,6 +254,34 @@ function DiskInventoryPanel() {
         <p className="inventory-safety-note">Disk seçimi, biçimlendirme, benchmark, onarma ve yazma işlemleri bu test derlemesinde kapalıdır.</p>
       </div>
     </main>
+  );
+}
+
+function VolumeInventoryRow({ volume }: { volume: ReadOnlyVolume }) {
+  const driveType = volume.driveType === "fixed" ? "Sabit"
+    : volume.driveType === "removable" ? "Çıkarılabilir"
+      : volume.driveType === "remote" ? "Ağ"
+        : volume.driveType === "cdrom" ? "Optik"
+          : volume.driveType === "ramdisk" ? "RAM"
+            : "Bilinmiyor";
+  return (
+    <article className="inventory-row" role="listitem" data-testid={"inventory-volume-" + volume.ordinal}>
+      <div className="inventory-row-title">
+        <span className="inventory-row-icon"><Icon name={volume.eligible ? "drive" : "lock"} size={22}/></span>
+        <div>
+          <h3>{volume.mountPoint ?? "Birim " + volume.ordinal}</h3>
+          <p>{volumeEligibilityText(volume)}</p>
+        </div>
+        <strong>{formatCapacity(volume.totalBytes)}</strong>
+      </div>
+      <dl className="inventory-facts">
+        <div><dt>Dosya sistemi</dt><dd>{volume.fileSystem ?? "Bilinmiyor"}</dd></div>
+        <div><dt>Birim türü</dt><dd>{driveType}</dd></div>
+        <div><dt>Kullanılabilir</dt><dd>{formatCapacity(volume.availableBytes)}</dd></div>
+        <div><dt>Fiziksel disk</dt><dd>{volume.diskOrdinal ? "Disk " + volume.diskOrdinal : "Eşleşmedi"}</dd></div>
+        <div><dt>Bölüm</dt><dd>{volume.partitionNumber ?? "Eşleşmedi"}</dd></div>
+      </dl>
+    </article>
   );
 }
 

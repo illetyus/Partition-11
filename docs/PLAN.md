@@ -24,6 +24,46 @@ are implemented.
 
 ---
 
+## Current local checkpoint — P2.5B.4 volume eligibility preflight (2026-10-19)
+
+Work is in `feature/p2.5-volume-eligibility-policy` from the current verified
+`origin/main`. This local slice adds read-only drive-letter-to-partition
+mapping through the documented `Win32_LogicalDiskToPartition` association,
+then matches the result against the agent's independent disk layout. It does
+not open a volume device handle: Microsoft documents that direct volume
+handles require administrator privileges, which the agent rejects.
+
+The bounded local WMI query is run through a fixed Windows PowerShell command,
+with a 3-second CIM operation timeout, a 5-second process deadline and a
+512-KiB/4,096-row output limit. A second mapping snapshot and the existing
+PnP/layout checks reject a changed scan. Missing or inaccessible WMI mapping
+leaves all candidates ineligible. The UI receives only the sanitized drive
+letter, metadata and an Electron-minted scan-local selection token; volume
+GUID paths remain inside the agent. Eligibility denies the Windows system
+disk, boot/protected or unknown partitions, ambiguous drive/folder mounts,
+unsupported filesystem/drive types, read-only volumes and less than 2 GiB
+free space. The 2-GiB floor allows the proposed 1-GiB scratch file plus a
+1-GiB reserve.
+
+Validation so far: 94 Rust agent tests passed (the one live inventory test was
+deliberately skipped), workspace Clippy passed, Windows x64 release agent
+build passed, TypeScript typecheck passed, main-process tests passed 42/42,
+production Electron build passed, and Windows UI smoke passed with 45
+assertions, 11 screenshots and no errors. The smoke bridge uses static mock
+data and confirms launch never starts a physical disk query. Physical-device
+acceptance was not run. A real Windows 11 volume scan and user acceptance
+remain pending; benchmark launch and all writes remain disabled. No PR or
+merge has been made for this local checkpoint.
+
+Primary API references: [volume direct-access requirements](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew),
+[logical disk to partition association](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-logicaldisktopartition),
+[partition disk index and range](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-diskpartition),
+[local CIM association query](https://learn.microsoft.com/en-us/powershell/module/cimcmdlets/get-cimassociatedinstance?view=powershell-5.1).
+
+Next: prepare the reviewed branch as a PR, complete required CI, and request the user's merge approval after the checks pass. Remaining P2.5 gates include owned scratch-file creation and identity, pinned DiskSpd execution, consent, Job Object process-tree cancellation, metrics validation, and the user's physical Windows 11 test.
+
+---
+
 ## Current checkpoint — roadmap item 2 bounded metadata I/O complete
 
 [PR #46](https://github.com/illetyus/Partition-11/pull/46) merged to
@@ -193,14 +233,17 @@ only after an explicit architecture decision and license review.
   PR #49 merged at `fdab284f936bf20a5bcecd5b28d4ca200280a4aa`; PR checks were
   5/5 and post-merge main checks were 3/3. Physical Windows 11 acceptance and
   stable hardware identity remain open.
-- **P2.5A / P2.5B.1 / P2.5B.2 / local P2.5B.3**: Four mock-only benchmark profiles, a strict XML result
+- **P2.5A / P2.5B.1 / P2.5B.2 / P2.5B.3 / local P2.5B.4**: Four mock-only benchmark profiles, a strict XML result
   parser, genuine pinned DiskSpd **read-only CI** smoke test, fixed workload
   planner with a write-only `-g100000` cap and conservative byte estimate,
   exact-owned scratch-file tests, and protected MBR/GPT partition metadata
   carried by worker protocol v2 exist. PR #51 is merged and its post-merge
-  `main` checks passed 3/3. No user-facing benchmark process, production
-  volume authorization, Job Object cancellation, consent screen or real-device
-  performance reports exist.
+  `main` checks passed 3/3. The local P2.5B.4 slice adds bounded WMI
+  drive-letter/partition mapping, system-disk exclusion, volume eligibility,
+  and sanitized preview metadata; real Windows 11 volume acceptance is still
+  pending. No user-facing benchmark process, owned scratch-file authorization,
+  Job Object cancellation, consent screen or real-device performance reports
+  exist.
 - **P3–P8**: No ext read/write engine is integrated; formatting, mount,
   repair, resize and raw disk writes remain unavailable.
 - **P9**: GitHub Actions can package an unsigned, unpacked x64 UI preview;

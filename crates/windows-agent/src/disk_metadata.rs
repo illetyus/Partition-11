@@ -50,6 +50,12 @@ pub(crate) struct DiskMetadata {
 }
 
 #[derive(Debug)]
+pub(crate) struct ReadOnlyInventory {
+    pub disks: Vec<ProbeOutcome>,
+    pub volumes: Vec<crate::volume_inventory::VolumeRecord>,
+}
+
+#[derive(Debug)]
 pub(crate) enum ProbeOutcome {
     Ready(DiskMetadata),
     Unavailable(MetadataError),
@@ -114,13 +120,13 @@ impl fmt::Display for ScanError {
 
 /// Return provisional metadata only to the local agent, never to Electron.
 /// A later, independent SetupAPI pass rejects paths that disappeared.
-pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanError> {
+pub(crate) fn inspect_discovered_devices() -> Result<ReadOnlyInventory, ScanError> {
     inspect_discovered_devices_with_timeout(Duration::from_secs(30))
 }
 
 pub(crate) fn inspect_discovered_devices_with_timeout(
     timeout: Duration,
-) -> Result<Vec<ProbeOutcome>, ScanError> {
+) -> Result<ReadOnlyInventory, ScanError> {
     let deadline = Instant::now() + timeout;
     crate::metadata_query::reject_elevated_process().map_err(ScanError::Security)?;
     let generation = ScanGeneration::default();
@@ -147,6 +153,12 @@ pub(crate) fn inspect_discovered_devices_with_timeout(
         }
         results.push(result);
     }
+    let volumes =
+        crate::volume_inventory::inspect(&results, &generation, starting_revision, deadline)
+            .map_err(|error| match error {
+                MetadataError::TimedOut => ScanError::TimedOut,
+                other => ScanError::Security(other),
+            })?;
     remaining_scan_time(deadline)?;
     epoch.ensure_current().map_err(ScanError::Security)?;
     let after = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
@@ -172,7 +184,10 @@ pub(crate) fn inspect_discovered_devices_with_timeout(
         .validate(&after, &numbers)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
     generation.invalidate();
-    Ok(results)
+    Ok(ReadOnlyInventory {
+        disks: results,
+        volumes,
+    })
 }
 
 #[cfg(test)]
@@ -208,7 +223,10 @@ mod tests {
     #[test]
     fn metadata_probe_stays_local_and_non_elevated() {
         match inspect_discovered_devices() {
-            Ok(entries) => assert!(entries.len() <= 256),
+            Ok(inventory) => {
+                assert!(inventory.disks.len() <= 256);
+                assert!(inventory.volumes.len() <= crate::volume_inventory::MAX_VOLUMES);
+            }
             Err(ScanError::Security(MetadataError::ElevatedProcess)) => (),
             Err(e) => panic!("unexpected native metadata error: {e}"),
         }

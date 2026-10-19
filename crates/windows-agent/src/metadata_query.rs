@@ -748,6 +748,7 @@ mod tests {
         assert!(is_fixed_metadata_ioctl(IOCTL_DISK_GET_LENGTH_INFO));
         assert!(is_fixed_metadata_ioctl(IOCTL_STORAGE_QUERY_PROPERTY));
         assert!(is_fixed_metadata_ioctl(IOCTL_DISK_GET_DRIVE_LAYOUT_EX));
+        assert!(!is_fixed_metadata_ioctl(0x0056_0000));
         assert!(!is_fixed_metadata_ioctl(0));
         assert!(!is_fixed_metadata_ioctl(0x0007_0004));
     }

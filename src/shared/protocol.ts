@@ -44,15 +44,53 @@ export type ReadOnlyDisk = Readonly<{
   partitionCount: number | null;
 }>;
 
+export type VolumeEligibilityReason =
+  | "eligible"
+  | "system_volume"
+  | "system_volume_unknown"
+  | "no_drive_letter_mount"
+  | "ambiguous_mount"
+  | "unsupported_drive_type"
+  | "unsupported_filesystem"
+  | "read_only"
+  | "missing_space_metadata"
+  | "insufficient_space"
+  | "multiple_extents"
+  | "missing_extents"
+  | "invalid_extent"
+  | "unknown_disk"
+  | "ambiguous_disk"
+  | "boot_disk"
+  | "partition_unmapped"
+  | "protected_partition"
+  | "unsupported_partition";
+
+export type ReadOnlyVolume = Readonly<{
+  ordinal: number;
+  mountPoint: string | null;
+  driveType: "unknown" | "no_root" | "removable" | "fixed" | "remote" | "cdrom" | "ramdisk";
+  fileSystem: "NTFS" | "ReFS" | "exFAT" | "FAT" | "FAT32" | null;
+  totalBytes: string | null;
+  availableBytes: string | null;
+  readOnly: boolean;
+  eligible: boolean;
+  eligibilityReason: VolumeEligibilityReason;
+  diskOrdinal: number | null;
+  partitionNumber: number | null;
+  /** Random token minted by Electron main and bound to the latest scan only. */
+  selectionToken: string | null;
+}>;
+
 export type ReadOnlyDiskInventory =
   | Readonly<{
-      protocolVersion: 1;
+      protocolVersion: 2;
       status: "ok";
       scannedAt: string;
       disks: readonly ReadOnlyDisk[];
+      volumes: readonly ReadOnlyVolume[];
     }>
   | Readonly<{
-      protocolVersion: 1;
+      protocolVersion: 2;
       status: "error";
       error: "agent_unavailable" | "timeout" | "invalid_response" | "access_denied" | "agent_failure";
     }>;

@@ -4,13 +4,16 @@ import { randomUUID } from "node:crypto";
 import type {
   InventoryAvailability,
   ReadOnlyDisk,
-  ReadOnlyDiskInventory
+  ReadOnlyDiskInventory,
+  ReadOnlyVolume,
+  VolumeEligibilityReason
 } from "../shared/protocol";
 
 const AGENT_TIMEOUT_MS = 35_000;
 const AGENT_HARD_DEADLINE_EXIT_CODE = 124;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_DISKS = 256;
+const MAX_VOLUMES = 256;
 const BUS_TYPES = new Set([
   "scsi", "atapi", "ata", "ieee1394", "ssa", "fibre", "usb", "raid",
   "iscsi", "sas", "sata", "sd", "mmc", "virtual", "nvme", "scm", "ufs"
@@ -20,8 +23,26 @@ const DISK_AVAILABILITY = new Set<InventoryAvailability>([
   "identity_changed", "scan_timeout", "agent_failure"
 ]);
 const AGENT_ERRORS = new Set(["access_denied", "agent_failure", "scan_timeout"]);
+const DRIVE_TYPES = new Set(["unknown", "no_root", "removable", "fixed", "remote", "cdrom", "ramdisk"]);
+const FILE_SYSTEMS = new Set(["NTFS", "ReFS", "exFAT", "FAT", "FAT32"]);
+const VOLUME_REASONS = new Set<VolumeEligibilityReason>([
+  "eligible", "system_volume", "system_volume_unknown", "no_drive_letter_mount", "ambiguous_mount",
+  "unsupported_drive_type", "unsupported_filesystem", "read_only", "missing_space_metadata",
+  "insufficient_space", "multiple_extents", "missing_extents", "invalid_extent", "unknown_disk",
+  "ambiguous_disk", "boot_disk", "partition_unmapped", "protected_partition", "unsupported_partition"
+]);
 
-type AgentSuccess = Readonly<{ ok: true; disks: readonly ReadOnlyDisk[] }>;
+type AgentVolume = Omit<ReadOnlyVolume, "selectionToken">;
+type VolumeSelection = Readonly<{
+  volumeOrdinal: number;
+  mountPoint: string;
+  fileSystem: NonNullable<AgentVolume["fileSystem"]>;
+  totalBytes: string;
+  availableBytes: string;
+  diskOrdinal: number;
+  partitionNumber: number;
+}>;
+type AgentSuccess = Readonly<{ ok: true; disks: readonly ReadOnlyDisk[]; volumes: readonly AgentVolume[] }>;
 type AgentFailure = Readonly<{ ok: false; error: "access_denied" | "agent_failure" | "scan_timeout" }>;
 type AgentResponse = AgentSuccess | AgentFailure;
 
@@ -62,6 +83,12 @@ function validCapacity(value: unknown): value is string | null {
   try { return BigInt(value) <= 18_446_744_073_709_551_615n; } catch { return false; }
 }
 
+function validVolumeBytes(value: unknown): value is string | null {
+  if (value === null) return true;
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]{0,19})$/.test(value)) return false;
+  try { return BigInt(value) <= 18_446_744_073_709_551_615n; } catch { return false; }
+}
+
 function validateDisk(value: unknown, expectedOrdinal: number): ReadOnlyDisk | null {
   if (!isRecord(value) || !hasExactKeys(value, [
     "ordinal", "availability", "capacityBytes", "logicalSectorSize",
@@ -84,9 +111,47 @@ function validateDisk(value: unknown, expectedOrdinal: number): ReadOnlyDisk | n
   return value as unknown as ReadOnlyDisk;
 }
 
+function validDriveRoot(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z]:\\$/.test(value);
+}
+
+function validateVolume(value: unknown, expectedOrdinal: number): AgentVolume | null {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "ordinal", "mountPoint", "driveType", "fileSystem", "totalBytes", "availableBytes",
+    "readOnly", "eligible", "eligibilityReason", "diskOrdinal", "partitionNumber"
+  ])) return null;
+  const reason = value.eligibilityReason;
+  const mountPoint = value.mountPoint;
+  const driveType = value.driveType;
+  const fileSystem = value.fileSystem;
+  const diskOrdinal = value.diskOrdinal;
+  const partitionNumber = value.partitionNumber;
+  if (value.ordinal !== expectedOrdinal ||
+      !(mountPoint === null || validDriveRoot(mountPoint)) ||
+      typeof driveType !== "string" || !DRIVE_TYPES.has(driveType) ||
+      !(fileSystem === null || (typeof fileSystem === "string" && FILE_SYSTEMS.has(fileSystem))) ||
+      !validVolumeBytes(value.totalBytes) || !validVolumeBytes(value.availableBytes) ||
+      typeof value.readOnly !== "boolean" || typeof value.eligible !== "boolean" ||
+      typeof reason !== "string" || !VOLUME_REASONS.has(reason as VolumeEligibilityReason) ||
+      !(diskOrdinal === null || (Number.isInteger(diskOrdinal) && (diskOrdinal as number) >= 1 && (diskOrdinal as number) <= MAX_DISKS)) ||
+      !(partitionNumber === null || (Number.isInteger(partitionNumber) && (partitionNumber as number) >= 1 && (partitionNumber as number) <= 128))) {
+    return null;
+  }
+  if (value.totalBytes !== null && value.availableBytes !== null &&
+      BigInt(value.availableBytes) > BigInt(value.totalBytes)) return null;
+  if (value.eligible !== (reason === "eligible") || (value.eligible && (
+    !validDriveRoot(mountPoint) ||
+    !["fixed", "removable"].includes(driveType as string) ||
+    fileSystem === null || value.readOnly || value.totalBytes === null || value.availableBytes === null ||
+    BigInt(value.availableBytes) < 2n * 1024n * 1024n * 1024n ||
+    diskOrdinal === null || partitionNumber === null
+  )) || (!value.eligible && (diskOrdinal !== null || partitionNumber !== null))) return null;
+  return value as unknown as AgentVolume;
+}
+
 /** Validate the complete agent envelope; unknown fields and stale IDs fail closed. */
 export function validateAgentResponse(value: unknown, requestId: string): AgentResponse | null {
-  if (!isRecord(value) || value.protocolVersion !== 1 || value.requestId !== requestId || typeof value.ok !== "boolean") {
+  if (!isRecord(value) || value.protocolVersion !== 2 || value.requestId !== requestId || typeof value.ok !== "boolean") {
     return null;
   }
   if (value.ok === false) {
@@ -94,21 +159,28 @@ export function validateAgentResponse(value: unknown, requestId: string): AgentR
         typeof value.error !== "string" || !AGENT_ERRORS.has(value.error)) return null;
     return { ok: false, error: value.error as AgentFailure["error"] };
   }
-  if (!hasExactKeys(value, ["protocolVersion", "requestId", "ok", "disks"]) ||
-      !Array.isArray(value.disks) || value.disks.length > MAX_DISKS) return null;
+  if (!hasExactKeys(value, ["protocolVersion", "requestId", "ok", "disks", "volumes"]) ||
+      !Array.isArray(value.disks) || value.disks.length > MAX_DISKS ||
+      !Array.isArray(value.volumes) || value.volumes.length > MAX_VOLUMES) return null;
   const disks: ReadOnlyDisk[] = [];
   for (let index = 0; index < value.disks.length; index += 1) {
     const disk = validateDisk(value.disks[index], index + 1);
     if (!disk) return null;
     disks.push(disk);
   }
-  return { ok: true, disks };
+  const volumes: AgentVolume[] = [];
+  for (let index = 0; index < value.volumes.length; index += 1) {
+    const volume = validateVolume(value.volumes[index], index + 1);
+    if (!volume) return null;
+    volumes.push(volume);
+  }
+  return { ok: true, disks, volumes };
 }
 
 type InventoryError = Extract<ReadOnlyDiskInventory, { status: "error" }>["error"];
 
 function errorResult(error: InventoryError): ReadOnlyDiskInventory {
-  return { protocolVersion: 1, status: "error", error };
+  return { protocolVersion: 2, status: "error", error };
 }
 
 function readOneJsonLine(chunks: Buffer[]): unknown | null {
@@ -194,7 +266,7 @@ function runAgent(
     child.stdin.once("error", () => stopAndReap({ kind: "spawn-error" }));
     try {
       child.stdin.end(JSON.stringify({
-        protocolVersion: 1,
+        protocolVersion: 2,
         requestId,
         operation: "inspectPhysicalDisks"
       }) + "\n");
@@ -206,6 +278,7 @@ function runAgent(
 
 export class ReadOnlyDiskInventoryService {
   private active: Promise<ReadOnlyDiskInventory> | undefined;
+  private readonly selections = new Map<string, VolumeSelection>();
   private readonly exists: (path: string) => boolean;
   private readonly spawnProcess: SpawnFactory;
   private readonly timeoutMs: number;
@@ -224,7 +297,13 @@ export class ReadOnlyDiskInventoryService {
     return this.active;
   }
 
+  /** Resolve only a token from the latest scan; no disk operation is performed. */
+  resolveSelectionToken(token: string): VolumeSelection | null {
+    return this.selections.get(token) ?? null;
+  }
+
   private async run(): Promise<ReadOnlyDiskInventory> {
+    this.selections.clear();
     if (!this.exists(this.executablePath)) return errorResult("agent_unavailable");
     const requestId = randomUUID();
     const result = await runAgent(this.executablePath, requestId, this.spawnProcess, this.timeoutMs);
@@ -239,11 +318,28 @@ export class ReadOnlyDiskInventoryService {
       if (message.error === "access_denied") return errorResult("access_denied");
       return errorResult("agent_failure");
     }
+    const volumes: ReadOnlyVolume[] = message.volumes.map(volume => {
+      const selectionToken = volume.eligible ? randomUUID() : null;
+      if (selectionToken && volume.mountPoint && volume.fileSystem &&
+          volume.totalBytes && volume.availableBytes && volume.diskOrdinal && volume.partitionNumber) {
+        this.selections.set(selectionToken, {
+          volumeOrdinal: volume.ordinal,
+          mountPoint: volume.mountPoint,
+          fileSystem: volume.fileSystem,
+          totalBytes: volume.totalBytes,
+          availableBytes: volume.availableBytes,
+          diskOrdinal: volume.diskOrdinal,
+          partitionNumber: volume.partitionNumber
+        });
+      }
+      return { ...volume, selectionToken };
+    });
     return {
-      protocolVersion: 1,
+      protocolVersion: 2,
       status: "ok",
       scannedAt: this.now().toISOString(),
-      disks: message.disks
+      disks: message.disks,
+      volumes
     };
   }
 }

@@ -329,6 +329,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .inventory-refresh:hover:not(:disabled) { filter: brightness(.95); }
 .inventory-refresh:disabled { opacity: .68; }
 .inventory-results { padding-top: 19px; }
+.inventory-volume-section { margin-top: 23px; padding-top: 19px; border-top: 1px solid var(--p11-border); }
+.inventory-volume-heading { margin-bottom: 12px; }
+.inventory-volume-heading h2 { color: var(--p11-text); font-size: 17px; font-weight: 640; margin: 0 0 6px; }
+.inventory-volume-heading p { color: var(--p11-secondary); font-size: 12px; margin: 0; }
 .inventory-message { color: var(--p11-secondary); margin: 0; padding: 15px 4px; }
 .inventory-error { color: var(--colorPaletteRedForeground1); }
 .inventory-timestamp { margin: 0 0 13px; color: var(--p11-secondary); font-size: 12px; }

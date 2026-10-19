@@ -1,6 +1,6 @@
 # P2.5 — Disk Benchmark: literature review and implementation plan
 
-Reviewed: 2026-10-19. State: P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives and P2.5B.2 bounded write-rate planning are implemented for tests. PR #51 merged P2.5B.3 protected MBR/GPT partition metadata through worker protocol v2. Volume-to-disk mapping, complete system-volume exclusion, and target authorization remain open. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
+Reviewed: 2026-10-19. P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives and P2.5B.2 bounded write-rate planning are implemented for tests. PR #51 merged P2.5B.3 protected MBR/GPT partition metadata through worker protocol v2. Local P2.5B.4 adds bounded drive-letter-to-partition mapping and fail-closed volume eligibility, with real Windows 11 volume acceptance pending. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
 
 ## Decision and scope
 
@@ -21,6 +21,10 @@ unmounted ext4 partition, nor prove how that partition behaves on Linux.
 | CrystalDiskMark | https://github.com/hiyohiyo/CrystalDiskMark — DiskBench.cpp MIT header and DiskSpd executable invocation | Workloads and UX, no code/assets copied |
 | fio | https://github.com/axboe/fio — COPYING GPLv2, README.rst Windows/Cygwin build | Independent development oracle only |
 | Windows File I/O | https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering | Unbuffered I/O alignment and cache rules |
+| Microsoft volume handles | https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew | Direct volume access requires administrator privileges; excluded from the non-elevated agent |
+| Win32_LogicalDiskToPartition | https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-logicaldisktopartition | Supported WMI association between a logical drive and its partition |
+| Win32_DiskPartition | https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-diskpartition | Read-only partition disk index, start offset and size |
+| Get-CimAssociatedInstance | https://learn.microsoft.com/en-us/powershell/module/cimcmdlets/get-cimassociatedinstance?view=powershell-5.1 | Local CIM association query used by the bounded preflight |
 
 Core DiskSpd documentation:
 
@@ -245,3 +249,33 @@ the UI or a production worker, and it is not proof of any live write behavior.
 The official DiskSpd command reference defines `-g` as a per-thread,
 per-target bytes-per-millisecond throughput throttle:
 https://github.com/microsoft/diskspd/wiki/Command-line-and-parameters
+
+## Local P2.5B.4 — Non-elevated volume eligibility preflight
+
+The agent obtains the OS volume GUID from `GetSystemWindowsDirectoryW`,
+enumerates volume metadata with the documented volume-management APIs, and
+queries the local `Win32_LogicalDiskToPartition` association through a fixed
+PowerShell command. It uses a 3-second CIM operation timeout and kills the
+PowerShell process after 5 seconds; output is limited to 512 KiB and 4,096
+numeric mapping rows. The mapping is queried twice in a scan. Each extent
+must map to exactly one current disk record and one occupied partition range
+from the independent Windows disk-layout query. WMI access or parsing failure
+never grants eligibility.
+
+Direct `CreateFile` volume handles are not used for extent lookup because
+Microsoft documents administrative privileges as a requirement for direct
+volume access. This application rejects elevated execution and does not
+request UAC. The local WMI query is read-only; if PowerShell/CIM is unavailable,
+blocked by local policy, times out, or returns an incomplete mapping, targets
+remain ineligible. The renderer receives no volume GUID or WMI path, only a
+drive-letter root and bounded metadata. System-volume drive letter aliases
+and folder mount aliases are both considered when rejecting ambiguous
+mounts.
+
+This is a **local implementation checkpoint**, not a completed acceptance
+gate. Rust policy/decoder tests, Clippy, Windows x64 release compilation,
+TypeScript typecheck, main-process tests, production Electron build, and
+Windows UI smoke pass. The UI smoke used static data, passed 45 assertions
+and captured 11 screenshots; it confirms app launch does not query a physical
+disk. The physical Windows 11 inventory test is intentionally left for the
+user. Benchmark launch, file creation and writes remain disabled.
