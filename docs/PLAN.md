@@ -60,11 +60,12 @@ responses even if the call returned success, and checks each bounded
 drive-layout retry. This is fail-closed stale-result rejection, **not**
 forceful cancellation of a blocked synchronous Windows call.
 
-**Next:** [P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31):
-design and test handle-specific query-remove notifications, safe resource
-closure/reopen and blocked-I/O cancellation/timeout, hardware-backed identity
-evaluation and physical Windows 11 hotplug/BitLocker/4Kn acceptance.
-See [query-epoch notes](P2_I2C_QUERY_EPOCH.md).
+At this historical checkpoint, [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+still called for handle-specific query-remove notifications and blocked-I/O
+cancellation. PR #43 later added per-HANDLE removal handling, and PR #46
+added bounded cancellation in a disposable worker. The remaining gates are
+durable hardware identity, physical Windows 11 acceptance, and authenticated
+read-only IPC/UI. See [query-epoch notes](P2_I2C_QUERY_EPOCH.md).
 No Electron disk privileges or physical writes are enabled.
 New `main` runs: [CI](https://github.com/illetyus/Partition-11/actions/runs/39176273055),
 [UI](https://github.com/illetyus/Partition-11/actions/runs/39176273089),
@@ -77,7 +78,7 @@ verify final statuses separately.
 Last reviewed: 2026-10-18. Application name is **Partition 11** and the
 GitHub repository remains **illetyus/Partition-11** by user decision.
 
-## P2-I2c-3 checkpoint — cancellable scan generations merged
+## Previous checkpoint — P2-I2c-3 cancellable scan generations merged
 
 [PR #37](https://github.com/illetyus/Partition-11/pull/37) was merged
 as `fd920434101ce5b7797caced9d0c451caf86dc2e` with 5/5 passing PR
@@ -86,12 +87,13 @@ tests for stale snapshot cancellation; non-elevated aggregate-only scans
 invalidate their generation on normal completion. Windows Clippy checks
 were repaired, not globally disabled.
 
-**Not complete:** PnP device change notifications, shared cross-scan
-generation/handle binding, fast unplug/replug identity, real Windows 11
-hardware acceptance and an authenticated read-only Electron IPC.
-These remain in [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
-All disk read/write GUI capabilities remain false. Verify current CI
-and `main` live before the next engineering increment.
+At this historical checkpoint, PnP device-change notifications and
+handle-specific cancellation were not yet implemented. PR #39 later added
+PnP event invalidation, PR #43 added per-HANDLE removal handling, and PR #46
+added bounded in-flight I/O cancellation. Durable hardware identity,
+physical Windows 11 acceptance, and authenticated read-only IPC/UI remain in
+[Issue #31](https://github.com/illetyus/Partition-11/issues/31). All disk
+read/write GUI capabilities remain false.
 
 ## Objective
 
@@ -236,19 +238,22 @@ Never equate passing GitHub-hosted VM tests with physical Windows 11 validation.
   acceptance and authenticated read-only agent IPC remain open in Issue #31.
 - [P2-I2 parent #19](https://github.com/illetyus/Partition-11/issues/19).
 
-## P2-I2c-2 — Agent-private PnP instance cross-check
+## Previous checkpoint — P2-I2c-2 agent-private PnP instance cross-check
 
 [PR #35](https://github.com/illetyus/Partition-11/pull/35) merged at
 `b3d256ef` after 5/5 successful PR tests. The agent cross-checks
 `SetupDiGetDeviceInstanceIdW` values with each observed disk-interface
 path at the start/end of a non-elevated, read-only metadata scan. A
 Windows SDK C ABI oracle validates `SP_DEVINFO_DATA`. Neither the path
-nor the instance ID is a durable physical identifier. Rapid replug,
-PnP notification generation/cancellation, safe handle-to-target binding,
-and physical Windows 11 tests remain OPEN in [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
-No renderer disk access or write/elevation capabilities enabled.
+nor the instance ID is a durable physical identifier. At this checkpoint,
+rapid replug, PnP notification generation/cancellation, handle lifecycle,
+and physical Windows 11 tests remained open. PR #39, #43 and #46 later added
+event invalidation, per-HANDLE removal handling, and bounded I/O cancellation.
+Durable identity, physical acceptance and authenticated read-only IPC/UI
+remain open in [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
+No renderer disk access or write/elevation capabilities are enabled.
 
-## P2-I2c-4 — Windows PnP device-interface event invalidation
+## Previous checkpoint — P2-I2c-4 Windows PnP device-interface event invalidation
 
 [PR #39](https://github.com/illetyus/Partition-11/pull/39) merged at
 `23c3e4f0`, following 5/5 PR checks. The diagnostic registers
@@ -257,21 +262,24 @@ invalidates its ephemeral atomic generation when Windows reports disk
 interface changes. Unregistration waits for callbacks, then the scan
 rechecks both the event generation and full device inventory. The
 Microsoft SDK C ABI test and Windows VM subscribe/unsubscribe tests
-passed. **Next issue #31**: per-device handle notifications, hardware
-identity assurance and actual Windows 11 hotplug QA; do not turn on
-physical disk access / raw reads / writes / UAC.
+passed. At that time, [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+still called for per-device handle notifications and blocked-I/O cancellation;
+PR #43 and PR #46 later added those protections. Durable hardware identity,
+physical Windows 11 acceptance and authenticated read-only IPC/UI remain open.
+Do not turn on physical disk access, raw reads/writes, or UAC.
 
-## P2-I2c-1 — Bounded fail-closed scan inventory
+## Previous checkpoint — P2-I2c-1 bounded fail-closed scan inventory
 
 [PR #33](https://github.com/illetyus/Partition-11/pull/33) merged at
 `c0da73dc`: present disk interface inventory before/after the entire
 metadata probe must remain unchanged, unique and within a 120-second
 scan lifetime. Duplicate/unknown temporary disk numbers fail closed.
 This is **not strong physical identity**: identical path reuse on rapid
-remove/replug is not resolved. [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
-remains open for Windows PnP identity, cancel/invalidate/hotplug and
-hardware acceptance. All Electron disk access and write capabilities remain
-disabled.
+remove/replug is not resolved. At this checkpoint, [Issue #31](https://github.com/illetyus/Partition-11/issues/31)
+also tracked PnP invalidation and I/O cancellation; PRs #39, #43 and #46
+later implemented those parts. Durable identity and physical hardware
+acceptance remain open. All Electron disk access and write capabilities
+remain disabled.
 
 ## Previous checkpoint after P2-I2b Windows SDK ABI validation
 
