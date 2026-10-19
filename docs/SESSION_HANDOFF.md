@@ -1,20 +1,26 @@
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-19)
 
-## EN YENİ YEREL DİLİM — P2.5B.3 korunan bölüm türleri
+## EN YENİ MERGED CHECKPOINT — P2.5B.3 korunan bölüm türleri
 
-`feature/p2.5-protected-partition-types`, PR #50'nin merge edilmiş
-`b1dfe8d` checkpoint'inden başlıyor. Bu dilim `PARTITION_INFORMATION_EX`
-çıktısındaki MBR bölüm türünü ve boot göstergesini, GPT tür GUID'ini parser'da
-koruyor; worker protokolü sürüm 2 bunları kayıpsız taşıyor. EFI, Microsoft
+PR #51, `86f151b` değişikliğiyle `eb2d932abdb492a040232fbbc3bc81ae558ce467`
+commit'i olarak merge edildi. PR kontrolleri 5/5, aynı SHA'daki taze `main`
+kontrolleri 3/3 başarılı:
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39309441359),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39309441521),
+[DiskSpd XML](https://github.com/illetyus/Partition-11/actions/runs/39309441451).
+
+`PARTITION_INFORMATION_EX` parser'ı MBR tür/boot alanlarını ve GPT tür
+GUID'lerini koruyor; worker protokolü sürüm 2 bunları taşıyor. EFI, Microsoft
 Reserved, Microsoft Recovery, servis, aktif MBR, MBR Recovery ve MBR EFI
-sınıfları gelecekteki benchmark hedef politikasına korumalı işaretleniyor.
+sınıfları korumalı tanınabiliyor. Yerel Windows x64 Rust doğrulaması (79
+agent, 19 core), Electron ana süreç testleri (42/42), production build,
+agent release build ve Windows SDK C ABI oracle geçti. Fiziksel disk testi
+yapılmadı. Bu sınıflandırma tek başına system/boot volume tespiti değildir.
 
-Yerel Windows x64 doğrulaması: Rust format/Clippy geçti; 79 agent ve 19 core
-testi geçti. Electron ana süreç testleri 42/42, production build başarılı.
-PR ve hosted CI henüz yok. Bu sınıflandırma tüm Windows system/boot volume'larını
-kanıtlamaz; volume->disk eşlemesi, sistem/önyükleme bayrakları, uygun dosya
-sistemi, serbest alan ve kararlı kimlik kapıları hâlâ uygulanmalı. Fiziksel
-disk testi yapılmadı.
+Sıradaki dilim: trusted volume GUID ve disk/partition extents eşlemesi;
+system/boot/recovery hacimlerini, desteklenen local filesystem/mount türünü,
+kararlı kimliği ve yeterli boş alanı fail-closed doğrulamak. Canlı benchmark
+launch hâlâ kapalıdır.
 
 ## EN YENİ DEVAM NOKTASI — P2 envanter birleşti; P2.5 yazma sınırı planlayıcısı
 

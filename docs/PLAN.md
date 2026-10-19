@@ -1,23 +1,26 @@
 # Partition 11 implementation plan
 
-## Current worktree checkpoint — P2.5B.3 partition protection metadata (2026-10-19)
+## Latest merged checkpoint — P2.5B.3 partition protection metadata (2026-10-19)
 
-The current branch, `feature/p2.5-protected-partition-types`, starts from the
-merged P2.5B.2 checkpoint at `b1dfe8d`. It preserves MBR partition type and
-active/boot indicator values plus GPT type GUID bytes in the metadata parser
-and internal worker protocol v2. Known service, EFI, Microsoft Reserved,
-Microsoft Recovery, active MBR, MBR recovery, and MBR EFI partition classes
-are marked protected for a future benchmark policy.
+PR #51 merged as `eb2d932abdb492a040232fbbc3bc81ae558ce467` after 5/5 PR
+checks. Fresh `main` at the same SHA passed CI, Windows Electron UI preview,
+and DiskSpd XML integration 3/3:
+[CI](https://github.com/illetyus/Partition-11/actions/runs/39309441359),
+[Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39309441521),
+[DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39309441451).
 
-This is only classification metadata. It does not identify every Windows
-system/boot volume or map volumes to physical disks, and it does not authorize
-a target or launch DiskSpd. Windows volume enumeration, system-volume checks,
-stable identity, free-space and filesystem policy remain required gates.
-No physical disk tests were run.
+The Windows layout parser preserves MBR partition type/active indicator and
+GPT type GUID fields through metadata worker protocol v2. Service, EFI,
+Microsoft Reserved, Microsoft Recovery, active MBR, MBR recovery, and MBR EFI
+partition classes can now be recognized by later benchmark policy. The slice
+does not map volumes to disks, fully identify Windows system/boot volumes,
+authorize targets, or launch DiskSpd. No physical disk tests were run.
 
-Local verification on Windows x64: Rust format and warning-denying Clippy
-passed; 79 agent and 19 core tests passed. Electron's 42 main-process tests and
-production build passed. Pull request and hosted CI checks remain pending.
+Next: add trusted volume-to-partition mapping and fail-closed eligibility
+checks for system/boot/recovery exclusions, supported local filesystem and
+drive types, identity, and free space. Production benchmark launch remains
+disabled until file ownership, consent, pinned engine, and cancellation gates
+are implemented.
 
 ---
 
@@ -194,9 +197,9 @@ only after an explicit architecture decision and license review.
   parser, genuine pinned DiskSpd **read-only CI** smoke test, fixed workload
   planner with a write-only `-g100000` cap and conservative byte estimate,
   exact-owned scratch-file tests, and protected MBR/GPT partition metadata
-  carried by worker protocol v2 exist. The P2.5B.3 changes are still local and
-  pending PR/CI. No user-facing benchmark process, production volume
-  authorization, Job Object cancellation, consent screen or real-device
+  carried by worker protocol v2 exist. PR #51 is merged and its post-merge
+  `main` checks passed 3/3. No user-facing benchmark process, production
+  volume authorization, Job Object cancellation, consent screen or real-device
   performance reports exist.
 - **P3–P8**: No ext read/write engine is integrated; formatting, mount,
   repair, resize and raw disk writes remain unavailable.
