@@ -77,17 +77,35 @@ fn coordinate_ioctl(
     backend: &mut impl IoctlBackend,
     cancellation_requested: impl Fn() -> bool,
 ) -> IoDecision {
+    let deadline = backend.now_ms().saturating_add(u64::from(IOCTL_TIMEOUT_MS));
     if cancellation_requested() {
         return IoDecision::Cancelled;
     }
     match backend.issue() {
-        BackendResult::Completed(bytes) => return IoDecision::Completed(bytes),
+        BackendResult::Completed(bytes) => {
+            if cancellation_requested() {
+                return IoDecision::Cancelled;
+            }
+            return if backend.now_ms() >= deadline {
+                IoDecision::TimedOut
+            } else {
+                IoDecision::Completed(bytes)
+            };
+        }
         BackendResult::Failed(ERROR_OPERATION_ABORTED) => return IoDecision::Cancelled,
-        BackendResult::Failed(code) => return IoDecision::Failed(code),
+        BackendResult::Failed(code) => {
+            if cancellation_requested() {
+                return IoDecision::Cancelled;
+            }
+            return if backend.now_ms() >= deadline {
+                IoDecision::TimedOut
+            } else {
+                IoDecision::Failed(code)
+            };
+        }
         BackendResult::Pending => {}
     }
 
-    let deadline = backend.now_ms().saturating_add(u64::from(IOCTL_TIMEOUT_MS));
     let mut cancel_reason = None;
     let mut cancel_deadline = None;
     loop {
@@ -402,6 +420,7 @@ mod tests {
     #[derive(Default)]
     struct FakeBackend {
         now_ms: u64,
+        issue_elapsed_ms: u64,
         immediate: Option<BackendResult>,
         completion_at_ms: Option<(u64, BackendResult)>,
         final_after_not_found: Option<BackendResult>,
@@ -419,6 +438,7 @@ mod tests {
 
         fn issue(&mut self) -> BackendResult {
             self.issue_count += 1;
+            self.now_ms = self.now_ms.saturating_add(self.issue_elapsed_ms);
             self.immediate.take().unwrap_or(BackendResult::Pending)
         }
 
@@ -467,6 +487,40 @@ mod tests {
         assert_eq!(decision, IoDecision::Completed(3));
         assert_eq!(backend.issue_count, 1);
         assert_eq!(finish_output(vec![1, 2, 3, 4], 3), Ok(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn late_immediate_completion_expires_the_request_budget() {
+        let mut backend = FakeBackend {
+            issue_elapsed_ms: u64::from(IOCTL_TIMEOUT_MS) + 1,
+            immediate: Some(BackendResult::Completed(3)),
+            ..FakeBackend::default()
+        };
+        assert_eq!(
+            coordinate_ioctl(&mut backend, || false),
+            IoDecision::TimedOut
+        );
+        assert_eq!(backend.issue_count, 1);
+        assert_eq!(backend.cancel_at_ms, None);
+    }
+
+    #[test]
+    fn pending_issue_that_uses_budget_is_cancelled_immediately() {
+        let mut backend = FakeBackend {
+            issue_elapsed_ms: u64::from(IOCTL_TIMEOUT_MS),
+            immediate: Some(BackendResult::Pending),
+            completion_at_ms: Some((
+                u64::from(IOCTL_TIMEOUT_MS) + 100,
+                BackendResult::Failed(ERROR_OPERATION_ABORTED),
+            )),
+            ..FakeBackend::default()
+        };
+        assert_eq!(
+            coordinate_ioctl(&mut backend, || false),
+            IoDecision::TimedOut
+        );
+        assert_eq!(backend.cancel_at_ms, Some(u64::from(IOCTL_TIMEOUT_MS)));
+        assert_eq!(backend.issue_count, 1);
     }
 
     #[test]

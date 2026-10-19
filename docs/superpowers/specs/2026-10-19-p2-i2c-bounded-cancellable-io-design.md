@@ -1,6 +1,8 @@
 # P2-I2c-7 — Bounded and cancellable metadata I/O design
 
-Status: design approved in chat; implementation not started.
+Status: design approved and implementation underway. The local code-review
+findings on request-budget start time and worker lifetime have been corrected;
+hosted CI and merge verification remain pending.
 
 ## Goal
 
@@ -58,9 +60,12 @@ The initial fixed limits are:
 These values are security limits, not performance targets. A timeout is an
 unavailable/error result, never partial success.
 
-The parent owns the 20-second hard deadline. A worker that does not exit after
-the normal cancellation path is terminated by the parent and its result is
-discarded.
+The parent enforces a 20-second hard deadline from worker launch. The worker
+also arms its own 20-second termination timer before reading its request or
+opening a device. This bounds an orphaned worker if the parent exits
+unexpectedly. The parent discards every result after timeout and quarantines
+the child and its pipe threads until the process is reaped and those threads
+finish; it does not block indefinitely waiting for termination.
 
 ## Per-IOCTL lifecycle
 
@@ -68,8 +73,10 @@ For every metadata IOCTL:
 
 1. Check the worker scan/PnP state before issuing I/O.
 2. Create one **manual-reset** completion event and one zero-initialized `OVERLAPPED`; store that event in `OVERLAPPED.hEvent`.
-3. Issue `DeviceIoControl` with that exact `OVERLAPPED`.
-4. If the call completes immediately, validate the byte count and continue.
+3. Start the five-second monotonic request budget, then issue `DeviceIoControl`
+   with that exact `OVERLAPPED`.
+4. If the call completes immediately, accept it only if the budget and PnP
+   state are still current; otherwise discard it as timed out or cancelled.
 5. If it returns `ERROR_IO_PENDING`, wait for completion for at most
    5 seconds.
 6. If PnP invalidates the target or the 5-second budget expires, call
@@ -84,8 +91,13 @@ For every metadata IOCTL:
     the operation's final completion state; never assume either success or
     cancellation.
 12. If the operation still has not completed after the grace period, stop
-    trusting the worker. The parent hard deadline terminates that disposable
-    worker and discards all output.
+    trusting the worker. The worker self-terminates by its hard deadline; the
+    parent watchdog also terminates it and discards all output.
+
+The budget is recorded before `DeviceIoControl` is called, so a late
+immediate-completion result is rejected and a pending request that returns
+after the budget is cancelled immediately. If the call itself does not return,
+the worker process boundary remains the hard-stop mechanism.
 
 No `OVERLAPPED` object or I/O buffer may be reused or freed while Windows can
 still reference it.
@@ -149,9 +161,12 @@ For each freshly enumerated disk interface:
 1. Capture the parent scan generation and inventory snapshot.
 2. Start one disposable worker.
 3. Send only the parent-selected interface through the private pipe.
-4. Wait for the worker under the 20-second total deadline.
+4. Monitor the worker under the 20-second total deadline; the worker has the
+   same independent self-termination bound in case the parent exits.
 5. If the worker exits normally, parse the bounded response.
-6. If it exceeds the deadline, terminate the worker and discard its output.
+6. If it exceeds the deadline, request termination, discard its output, and
+   quarantine the child and pipe threads. Do not block waiting for process
+   termination or start another worker until quarantine is clear.
 7. Re-enumerate the parent inventory and validate the existing scan snapshot.
 8. Accept the worker result only when the snapshot and generation are still
    current.

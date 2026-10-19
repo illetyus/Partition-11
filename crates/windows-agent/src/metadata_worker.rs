@@ -21,6 +21,18 @@ fn generation_is_current(generation: &ScanGeneration, expected_revision: u64) ->
     generation.revision() == expected_revision
 }
 
+fn spawn_deadline_terminator(
+    deadline: Duration,
+    terminate: impl FnOnce() + Send + 'static,
+) -> io::Result<JoinHandle<()>> {
+    thread::Builder::new()
+        .name("p11-worker-deadline".into())
+        .spawn(move || {
+            thread::sleep(deadline);
+            terminate();
+        })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WorkerError {
     ElevatedProcess,
@@ -69,6 +81,10 @@ fn read_bounded_request(reader: &mut impl Read) -> Result<WorkerRequest, WorkerE
 }
 
 pub(crate) fn run_stdio_worker() -> i32 {
+    let _deadline = match spawn_deadline_terminator(WORKER_DEADLINE, || std::process::exit(124)) {
+        Ok(deadline) => deadline,
+        Err(_) => return 3,
+    };
     if crate::metadata_query::reject_elevated_process().is_err() {
         return 3;
     }
@@ -185,6 +201,23 @@ fn decode_worker_result(
         }
         Ok(_) => ProbeOutcome::Unavailable(MetadataError::IdentityChanged),
         Err(_) => ProbeOutcome::Unavailable(MetadataError::WorkerFailed),
+    }
+}
+
+fn worker_outcome_after_wait(
+    wait_result: Result<ExitStatus, WatchError>,
+    bytes: &[u8],
+    is_current: impl Fn() -> bool,
+) -> ProbeOutcome {
+    if !is_current() {
+        return ProbeOutcome::Unavailable(MetadataError::IdentityChanged);
+    }
+    match wait_result {
+        Ok(status) => decode_worker_result(status.success(), bytes, is_current),
+        Err(WatchError::Invalidated) => ProbeOutcome::Unavailable(MetadataError::IdentityChanged),
+        Err(WatchError::TimedOut | WatchError::Process) => {
+            ProbeOutcome::Unavailable(MetadataError::WorkerFailed)
+        }
     }
 }
 
@@ -447,31 +480,21 @@ pub(crate) fn probe_via_worker(
     );
     let status = match status {
         Ok(status) => status,
-        Err(_) => {
+        Err(error) => {
             quarantine_worker(Some(child), threads);
-            return unavailable(if generation_is_current(generation, expected_revision) {
-                MetadataError::WorkerFailed
-            } else {
-                MetadataError::IdentityChanged
-            });
+            return worker_outcome_after_wait(Err(error), &[], current);
         }
     };
     let io_result = receive_worker_io(&writer_rx, &reader_rx, WORKER_DEADLINE, started, current);
     let (_, bytes) = match io_result {
         Ok(result) => result,
-        Err(_) => {
+        Err(error) => {
             quarantine_worker(None, threads);
-            return unavailable(if generation_is_current(generation, expected_revision) {
-                MetadataError::WorkerFailed
-            } else {
-                MetadataError::IdentityChanged
-            });
+            return worker_outcome_after_wait(Err(error), &[], current);
         }
     };
     drop(threads);
-    decode_worker_result(status.success(), &bytes, || {
-        generation_is_current(generation, expected_revision)
-    })
+    worker_outcome_after_wait(Ok(status), &bytes, current)
 }
 
 #[cfg(test)]
@@ -480,6 +503,8 @@ mod tests {
     use crate::metadata_worker_protocol::{encode_reply, WireError, WireMetadata, WireSectorSizes};
     use std::cell::Cell;
     use std::os::windows::process::ExitStatusExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     #[derive(Default)]
     struct FakeChild {
@@ -648,6 +673,42 @@ mod tests {
     }
 
     #[test]
+    fn timed_out_worker_ignores_even_a_valid_captured_reply() {
+        let reply = WorkerReply::Ready(WireMetadata {
+            device_number: 1,
+            capacity_bytes: Ok(4096),
+            sectors: Ok(WireSectorSizes {
+                logical: Some(512),
+                physical: Some(512),
+            }),
+            bus_type: Ok(None),
+            partition_layout: Ok(partition11_core::windows_layout::DriveLayout {
+                style: partition11_core::windows_layout::LayoutStyle::Raw,
+                occupied: Vec::new(),
+                returned_slots: 0,
+            }),
+        });
+        let bytes = encode_reply(&reply).unwrap();
+        assert!(matches!(
+            worker_outcome_after_wait(Err(WatchError::TimedOut), &bytes, || true),
+            ProbeOutcome::Unavailable(MetadataError::WorkerFailed)
+        ));
+    }
+
+    #[test]
+    fn worker_self_deadline_runs_its_terminator() {
+        let terminated = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&terminated);
+        spawn_deadline_terminator(Duration::from_millis(1), move || {
+            flag.store(true, Ordering::Release);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+        assert!(terminated.load(Ordering::Acquire));
+    }
+
+    #[test]
     fn worker_reply_after_pnp_invalidation_never_becomes_ready() {
         let reply = WorkerReply::Ready(WireMetadata {
             device_number: 1,
@@ -671,7 +732,7 @@ mod tests {
     }
 
     #[test]
-    fn worker_deadline_kills_waits_and_discards_output() {
+    fn worker_deadline_kills_and_discards_valid_output() {
         let mut child = FakeChild::default();
         let now = Cell::new(Duration::ZERO);
         let polls = Cell::new(0);
@@ -688,8 +749,43 @@ mod tests {
         assert_eq!(result, Err(WatchError::TimedOut));
         assert!(child.killed);
         assert!(polls.get() >= 2);
-        let discarded_output = Vec::<u8>::new();
-        assert!(discarded_output.is_empty());
+        let reply = WorkerReply::Ready(WireMetadata {
+            device_number: 1,
+            capacity_bytes: Ok(4096),
+            sectors: Ok(WireSectorSizes {
+                logical: Some(512),
+                physical: Some(512),
+            }),
+            bus_type: Ok(None),
+            partition_layout: Ok(partition11_core::windows_layout::DriveLayout {
+                style: partition11_core::windows_layout::LayoutStyle::Raw,
+                occupied: Vec::new(),
+                returned_slots: 0,
+            }),
+        });
+        let captured_output = encode_reply(&reply).unwrap();
+        assert!(matches!(
+            worker_outcome_after_wait(result, &captured_output, || true),
+            ProbeOutcome::Unavailable(MetadataError::WorkerFailed)
+        ));
+    }
+
+    #[test]
+    fn quarantined_pipe_thread_blocks_the_next_worker_launch() {
+        let _serial = worker_serial_guard();
+        assert!(can_launch_worker());
+        let (release_tx, release_rx) = mpsc::channel();
+        let pipe_thread = thread::spawn(move || {
+            let _ = release_rx.recv();
+        });
+        quarantine_worker(None, vec![pipe_thread]);
+        assert!(!can_launch_worker());
+        release_tx.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !can_launch_worker() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(can_launch_worker());
     }
 
     #[test]

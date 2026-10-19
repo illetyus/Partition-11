@@ -4,7 +4,7 @@
 
 **Goal:** Make every Windows metadata IOCTL cancellable and bounded, and isolate a non-cooperative storage driver inside a disposable worker process so the parent agent cannot hang indefinitely.
 
-**Architecture:** Keep SetupAPI enumeration, scan-generation policy, and final inventory validation in the parent agent. Move the fixed metadata query sequence into a one-shot child worker that owns the device HANDLE, per-HANDLE PnP registration, `OVERLAPPED` request memory, and I/O buffers. The worker uses overlapped `DeviceIoControl` with 5-second request budgets and `CancelIoEx`; the parent enforces a 20-second per-disk hard deadline and discards every stale, malformed, cancelled, crashed, or killed result.
+**Architecture:** Keep SetupAPI enumeration, scan-generation policy, and final inventory validation in the parent agent. Move the fixed metadata query sequence into a one-shot child worker that owns the device HANDLE, per-HANDLE PnP registration, `OVERLAPPED` request memory, and I/O buffers. The worker uses overlapped `DeviceIoControl` with a 5-second budget recorded before request submission and `CancelIoEx`; both parent and worker enforce a 20-second per-disk hard deadline. The parent discards every stale, malformed, cancelled, crashed, or killed result.
 
 **Tech Stack:** Rust 1.99.1, direct Win32 FFI (`CreateFileW`, `DeviceIoControl`, `CancelIoEx`, `GetOverlappedResultEx`, `CreateEventW`, `CloseHandle`), SetupAPI/cfgmgr32, std::process anonymous pipes, GitHub Actions Windows/Ubuntu CI.
 
@@ -15,6 +15,7 @@
 - Per metadata IOCTL completion budget is exactly **5 seconds**.
 - Cancellation completion grace period is exactly **1 second**.
 - Per-disk disposable worker hard deadline is exactly **20 seconds**.
+- The worker arms its own 20-second termination timer before reading input or opening a device, so it cannot outlive a crashed parent indefinitely.
 - Only the existing four metadata IOCTLs are permitted: `IOCTL_STORAGE_GET_DEVICE_NUMBER`, `IOCTL_DISK_GET_LENGTH_INFO`, `IOCTL_STORAGE_QUERY_PROPERTY`, `IOCTL_DISK_GET_DRIVE_LAYOUT_EX`.
 - No raw-sector `ReadFile`, `WriteFile`, write/format IOCTL, mount, repair, resize, or elevation may be introduced.
 - No renderer-controlled path or IOCTL may enter the worker protocol.
@@ -25,6 +26,10 @@
 - All Electron physical-disk and write capability flags remain false.
 - Production code follows TDD: each new behavior gets a failing test before implementation.
 - A code PR may merge only after the existing five CI jobs are green; fresh post-merge `main` must also be five-for-five green.
+
+## Execution checkpoint
+
+The protocol and worker implementation are on the local feature branch. The first review found that the request deadline started after `DeviceIoControl` submission and that a stuck worker relied only on the parent watchdog; both gaps are fixed, and the follow-up review found no actionable issues. Local verification passed: **88/88 Rust tests**, Clippy, formatting, Windows release build, Windows SDK C ABI check, Electron build, and **31/31 main-process tests**. The main-process tests require repo-local `TEMP`/`TMP` because the default AppContainer temp directory rejects the test's rename with `EPERM`. The design checkpoint PR passed 5/5 checks and is merged. The code PR, its five hosted checks, fresh post-merge `main`, and final documentation checkpoint remain pending.
 
 ## Review Focus
 
@@ -137,6 +142,8 @@ Use an injected private backend inside the module, not real disk I/O. Add:
 - `immediate_completion_returns_bounded_bytes`
 - `pending_completion_finishes_before_deadline`
 - `five_second_deadline_requests_exact_cancel`
+- `late_immediate_completion_expires_the_request_budget`
+- `pending_issue_that_uses_budget_is_cancelled_immediately`
 - `pnp_cancel_request_is_seen_within_one_wait_slice`
 - `cancelled_request_reports_operation_aborted`
 - `completion_can_win_cancel_race`
@@ -337,7 +344,7 @@ Sequence:
 8. encode one bounded reply to stdout;
 9. flush and exit.
 
-If the overlapped coordinator reaches its stuck-after-grace state, `run_worker_ioctl` does not return to this layer. It retains the active request and waits for process death, so no reply can be serialized and no request storage can be freed prematurely. The parent hard deadline is the ultimate backstop.
+Before processing input, the worker arms an independent 20-second termination timer. If the overlapped coordinator reaches its stuck-after-grace state, `run_worker_ioctl` does not return to this layer. It retains the active request until the worker self-terminates; the parent watchdog provides a second hard deadline and discards all output.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -360,7 +367,7 @@ Run worker/protocol tests plus full Windows Rust suite.
   - `pub(crate) const WORKER_DEADLINE: Duration = Duration::from_secs(20)`
   - `pub(crate) fn probe_via_worker(record: &DiskInterface, generation: &ScanGeneration) -> ProbeOutcome`
 - Private process abstraction used by tests:
-  - `trait WorkerChild { fn try_wait(&mut self) -> io::Result<Option<ExitStatus>>; fn kill(&mut self) -> io::Result<()>; fn wait(&mut self) -> io::Result<ExitStatus>; }`
+  - `trait WorkerChild { fn try_wait(&mut self) -> io::Result<Option<ExitStatus>>; fn kill(&mut self) -> io::Result<()>; }`
 
 - [ ] **Step 1: Write failing watchdog tests**
 
@@ -368,7 +375,7 @@ Add fake-process tests:
 - `worker_success_before_deadline_decodes_reply`
 - `worker_abnormal_exit_is_rejected`
 - `worker_malformed_reply_is_rejected`
-- `worker_deadline_kills_waits_and_discards_output`
+- `worker_deadline_kills_and_discards_valid_output`
 - `generation_change_while_worker_runs_discards_valid_reply`
 - `worker_result_is_rejected_when_post_scan_inventory_changes`
 
@@ -385,10 +392,14 @@ Use `std::env::current_exe()` + direct `Command`; never invoke a shell. Pass onl
 Read stdout concurrently into a bounded 65,536-byte collector so pipe capacity cannot deadlock the child. Do not log or expose path/instance data.
 
 Poll `try_wait` until the 20-second monotonic deadline. On expiry:
-1. `kill()`;
-2. `wait()` to reap;
-3. discard every output byte;
+1. request `kill()`;
+2. discard every output byte without waiting synchronously for exit;
+3. quarantine the child and pipe threads, and prevent another launch until
+   the child is reaped and all pipe threads finish;
 4. return `ProbeOutcome::Unavailable(MetadataError::WorkerFailed)`.
+
+The worker's own hard timer also terminates it if the parent process exits
+before the parent watchdog can act.
 
 After normal exit, require success exit status, exactly one bounded reply, current generation, and later parent inventory validation.
 

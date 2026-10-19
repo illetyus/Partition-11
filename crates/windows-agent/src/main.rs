@@ -24,7 +24,6 @@ mod metadata_worker;
 mod metadata_worker_protocol;
 #[cfg(any(windows, test))]
 #[allow(unsafe_code)]
-#[allow(dead_code)]
 mod overlapped_ioctl;
 #[cfg(windows)]
 #[allow(unsafe_code)]
