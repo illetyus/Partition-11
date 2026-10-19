@@ -1,18 +1,44 @@
 # Partition 11 — Agent / future-session instructions
 
-## LATEST MERGED DEVELOPMENT — per-HANDLE removal lifecycle (2026-10-19)
+## LATEST MERGED DEVELOPMENT — bounded/cancellable metadata I/O (2026-10-19)
+
+- [PR #46](https://github.com/illetyus/Partition-11/pull/46) merged to
+  `main` as `a9cb53344ff560082096d728eb453af0532a7415` after **5/5 PR checks**.
+- Roadmap item **2 is complete at code/CI level**: metadata IOCTLs run in a
+  disposable worker using overlapped I/O, a 5-second request budget that
+  starts before submission, exact-request `CancelIoEx`, and a 1-second
+  completion grace. The worker and parent enforce independent 20-second
+  limits; timed-out, invalidated, or malformed output is discarded, and
+  stuck child/pipe resources are quarantined before another worker starts.
+- Fresh post-merge `main` checks are **5/5 successful** at the same SHA:
+  [CI](https://github.com/illetyus/Partition-11/actions/runs/39195989162),
+  [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39195989210),
+  [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39195989174).
+- Details and boundaries: [docs/P2_I2C_BOUNDED_IO.md](docs/P2_I2C_BOUNDED_IO.md).
+  No Electron disk capability, raw-sector access, write, format, mount,
+  repair, resize, or elevation is enabled.
+- [Issue #31](https://github.com/illetyus/Partition-11/issues/31) remains
+  open for durable hardware identity, physical Windows 11 USB/NVMe/SATA/
+  BitLocker/512e/4Kn acceptance, authenticated read-only IPC and UI work.
+
+---
+
+## PREVIOUS MERGED DEVELOPMENT — per-HANDLE removal lifecycle (2026-10-19)
 
 - [PR #43](https://github.com/illetyus/Partition-11/pull/43) merged to `main` as `b17e0fbeacd9ee28f7383b5a75a1d7a8198f6a43` after **5/5 successful PR checks**.
 - Requested roadmap item **1 is complete at code/CI level**: every successfully opened metadata disk HANDLE gets a `CM_NOTIFY_FILTER_TYPE_DEVICEHANDLE` registration. Idle query-remove closes the exact HANDLE in the callback; a HANDLE currently leased to synchronous `DeviceIoControl` is never closed underneath that call. Query-remove is vetoed with `ERROR_CANCELLED`, the scan is invalidated, and the HANDLE is closed immediately when the call returns.
 - Registration races are fail-closed: the filter HANDLE remains valid until `CM_Register_Notification` returns. `DEVICEREMOVEPENDING` / `DEVICEREMOVECOMPLETE` also invalidate and close/defer-close. `DEVICEQUERYREMOVEFAILED` never resurrects a stale scan; the next invocation re-enumerates and opens a fresh HANDLE.
 - Windows SDK C oracle independently verifies the HANDLE-union offset, filter/action enum values and `ERROR_CANCELLED`. Scope/design: [docs/P2_I2C_HANDLE_REMOVAL.md](docs/P2_I2C_HANDLE_REMOVAL.md).
 - Fresh post-merge `main` verification is **5/5 successful**: [CI](https://github.com/illetyus/Partition-11/actions/runs/39179456003), [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39179456177), [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39179455971).
-- **Next roadmap item 2:** bounded/cancellable synchronous metadata I/O. A driver-blocked `DeviceIoControl` is not force-cancelled by PR #43; busy query-remove is safely vetoed until the call returns. Durable hardware identity and physical Win11 hotplug acceptance remain later gates. Electron disk access/writes/elevation remain disabled.
+- At the time PR #43 merged, roadmap item 2 was still pending. It is now
+  implemented by [PR #46](https://github.com/illetyus/Partition-11/pull/46)
+  and verified on fresh `main` above. Durable hardware identity and physical
+  Win11 hotplug acceptance remain later gates.
 
 ---
 
 
-## LATEST MERGED DEVELOPMENT — P2-I2c metadata query epoch (2026-10-19)
+## PREVIOUS MERGED DEVELOPMENT — P2-I2c metadata query epoch (2026-10-19)
 
 - [PR #41](https://github.com/illetyus/Partition-11/pull/41) merged as `6b9f293dea427f598fdc35ed355d9d39f5d6d3dd`, after 5/5 successful PR checks. Tests were written first and failed as expected (missing `ProbeEpoch`), then Windows/Linux Rust and Electron/Windows UI/DiskSpd passed.
 - The Rust agent now checks a single PnP `ScanGeneration` epoch **before and after every synchronous metadata query** and each partition-layout retry. On cancellation it drops results and starts no further Win32 metadata requests. It still **cannot forcibly terminate a blocking synchronous IOCTL**.
@@ -23,7 +49,7 @@
 ---
 
 
-## NEWEST VERIFIED CODE MERGE — Windows PnP scan invalidation (2026-10-18)
+## PREVIOUS VERIFIED CODE MERGE — Windows PnP scan invalidation (2026-10-18)
 
 - [PR #39](https://github.com/illetyus/Partition-11/pull/39) **merged into
   `main`** at `23c3e4f03ede81c1ba7cc94bffa69aa298065bd6`
@@ -54,7 +80,7 @@
   and write flags remain false, no raw sector reads or writes, no format/UAC.
 
 
-## CURRENT CHECKPOINT — P2-I2c-3 scan-generation primitive MERGED
+## PREVIOUS CHECKPOINT — P2-I2c-3 scan-generation primitive MERGED
 
 [PR #37](https://github.com/illetyus/Partition-11/pull/37) merged into
 `main` as `fd920434101ce5b7797caced9d0c451caf86dc2e` after
@@ -65,28 +91,30 @@ their private generation once a scan completes. Tests cover cancelled old
 snapshots, multiple observers and guard isolation. Only a test-only
 convenience constructor is excluded from production lint scope.
 
-**This is a cancellation primitive, NOT event-driven hotplug handling:**
-the current guard is created per invocation; Windows device-change
-notifications do not yet invalidate a shared guard. Same-path/instance-ID
-rapid unplug/replug and durable physical identity remain unaddressed.
-No Electron IPC, raw sectors, write, formatting, mount, UAC or physical
-Windows 11 device acceptance. All disk capability flags remain false.
+**Historical note:** this checkpoint described PR #37 before later work.
+PR #39 added Windows PnP event invalidation, PR #43 added per-HANDLE
+query-removal lifecycle handling, and PR #46 added bounded cancellable
+metadata I/O in a disposable worker. This section no longer defines the
+current next step. Remaining gates are durable hardware identity, physical
+Windows 11 device acceptance, and authenticated read-only IPC/UI; see the
+latest checkpoint above and [Issue #31](https://github.com/illetyus/Partition-11/issues/31).
 
 Post-merge `main` CI for that SHA (CHECK FINAL STATUS before claiming success):
 [CI](https://github.com/illetyus/Partition-11/actions/runs/39144208924),
 [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39144208918),
 [DiskSpd XML](https://github.com/illetyus/Partition-11/actions/runs/39144208949).
 
-**NEXT:** [P2-I2c #31](https://github.com/illetyus/Partition-11/issues/31),
-wire safe Windows PnP notifications to a truly shared agent generation,
-evaluate reliable hardware identity, reject fast replug races, test
-physical NVMe/SATA/USB Windows 11 acceptance. Preserve 5/5 PR gates,
-merge to main, verify new main checks and update this handoff.
+At this historical checkpoint, the next work was to connect Windows PnP
+notifications to a shared agent generation; that work landed in PR #39.
+Per-HANDLE removal handling and bounded in-flight I/O cancellation later
+landed in PRs #43 and #46. Current remaining work is durable hardware
+identity, physical Windows 11 acceptance, and authenticated read-only IPC/UI.
+Preserve the disabled disk capability flags until those gates are accepted.
 
 ---
 
 
-## LATEST MERGE — P2-I2c-2 PnP instance ID pair validation (2026-10-18)
+## PREVIOUS MERGE — P2-I2c-2 PnP instance ID pair validation (2026-10-18)
 
 **[PR #35](https://github.com/illetyus/Partition-11/pull/35) MERGED to main**
 at `b3d256ef92ebe966fb1463304195f0874725fa21` with **5/5 green PR
@@ -113,7 +141,7 @@ Post-merge `main` CI started (verify final result before claiming 5/5):
 Follow tested PR → main merge → fresh main CI → issue/handoff update.
 
 
-## LATEST MERGE — P2-I2c-1 fail-closed scan inventory (2026-10-18)
+## PREVIOUS MERGE — P2-I2c-1 fail-closed scan inventory (2026-10-18)
 
 [PR #33](https://github.com/illetyus/Partition-11/pull/33) **merged into main**
 at `c0da73dc94907e004907d52409d011805c7f765e` after five passing PR
@@ -187,7 +215,7 @@ Follow the mandatory green checks → merge-to-`main` → post-merge CI →
 handoff rule below. Verify latest live `main` and not just this dated SHA.
 
 
-## LATEST VERIFIED MERGE (2026-10-18) — READ FIRST
+## PREVIOUS VERIFIED MERGE (2026-10-18)
 
 [PR #26](https://github.com/illetyus/Partition-11/pull/26) merged to `main`
 as `e74a9d7576b624ac05c05948055a268b3104c6ec` (5/5 PR checks passed).

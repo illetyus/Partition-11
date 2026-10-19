@@ -36,15 +36,23 @@ the HANDLE is released immediately after registration returns.
 
 ## Explicit remaining gates
 
-This slice does **not** forcibly interrupt a driver-blocked synchronous
-`DeviceIoControl`. Therefore a query-remove can be temporarily vetoed until
-that call returns. Bounded/cancellable I/O is the next separate item.
+PR #43 originally used synchronous metadata `DeviceIoControl`, so a busy
+query-remove could be temporarily vetoed until that call returned. [PR #46](https://github.com/illetyus/Partition-11/pull/46)
+replaced that metadata path with a disposable worker and overlapped I/O:
+PnP invalidation requests cancellation of the exact active request, and the
+HANDLE and request buffers remain alive until completion or worker exit. If
+the driver does not complete cancellation, the worker and parent hard limits
+discard the result and bound the lifetime. An active query-remove can still
+be vetoed while the HANDLE is leased; hosted CI does not prove physical
+device-removal behavior.
 
 It also does not establish durable hardware identity, enable renderer IPC,
 perform raw sector reads/writes, elevate, format, mount, repair or resize.
 Hosted GitHub Windows runners verify compilation, ABI and deterministic state
 transitions; physical Windows 11 USB/NVMe/SATA/BitLocker/512e/4Kn hotplug
 acceptance remains separate.
+
+Current bounded-I/O design and evidence: [P2_I2C_BOUNDED_IO.md](P2_I2C_BOUNDED_IO.md).
 
 References:
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/install/registering-for-notification-of-device-interface-arrival-and-device-removal

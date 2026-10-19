@@ -29,7 +29,7 @@
 
 ## Execution checkpoint
 
-The protocol and worker implementation are on the local feature branch. The first review found that the request deadline started after `DeviceIoControl` submission and that a stuck worker relied only on the parent watchdog; both gaps are fixed, and the follow-up review found no actionable issues. Local verification passed: **88/88 Rust tests**, Clippy, formatting, Windows release build, Windows SDK C ABI check, Electron build, and **31/31 main-process tests**. The main-process tests require repo-local `TEMP`/`TMP` because the default AppContainer temp directory rejects the test's rename with `EPERM`. The design checkpoint PR passed 5/5 checks and is merged. The code PR, its five hosted checks, fresh post-merge `main`, and final documentation checkpoint remain pending.
+The implementation and review fixes are merged in [PR #46](https://github.com/illetyus/Partition-11/pull/46) as `a9cb53344ff560082096d728eb453af0532a7415`. The first review found that the request deadline started after `DeviceIoControl` submission and that a stuck worker relied only on the parent watchdog; both gaps were fixed, and the follow-up review found no actionable issues. Local verification passed: **88/88 Rust tests**, Clippy, formatting, Windows release build, Windows SDK C ABI check, Electron build, and **31/31 main-process tests**. The main-process tests require repo-local `TEMP`/`TMP` because the default AppContainer temp directory rejects the test's rename with `EPERM`. PR #46 passed 5/5 required checks; fresh post-merge `main` also passed 5/5: [CI](https://github.com/illetyus/Partition-11/actions/runs/39195989162), [Windows UI](https://github.com/illetyus/Partition-11/actions/runs/39195989210), [DiskSpd](https://github.com/illetyus/Partition-11/actions/runs/39195989174). Issue #31 remains open for durable hardware identity, physical Windows 11 acceptance, and authenticated read-only IPC/UI; these gates are intentionally outside this implementation plan.
 
 ## Review Focus
 
@@ -496,7 +496,7 @@ Squash merge only after required PR checks pass. Then verify the same five jobs 
 **Interfaces:**
 - Documentation only.
 
-- [ ] **Step 1: Record exact merged SHA and CI evidence**
+- [x] **Step 1: Record exact merged SHA and CI evidence**
 
 State precisely what is implemented:
 - 5s overlapped IOCTL budget;
@@ -506,7 +506,7 @@ State precisely what is implemented:
 - 20s parent hard deadline;
 - parent post-worker generation/inventory validation.
 
-- [ ] **Step 2: Preserve explicit limitations**
+- [x] **Step 2: Preserve explicit limitations**
 
 Still open after item 2:
 - strong hardware-backed identity;
