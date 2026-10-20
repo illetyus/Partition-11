@@ -45,6 +45,7 @@ pub(crate) struct StorageIdentity {
 
 impl StorageIdentity {
     /// Produce a deterministic, type-separated message for the keyed digest.
+    #[cfg(windows)]
     pub(crate) fn canonical_bytes(&self) -> Vec<u8> {
         let mut out = b"Partition11 storage identity v1\0".to_vec();
         for identifier in &self.identifiers {
@@ -57,6 +58,7 @@ impl StorageIdentity {
 
     /// Treat any shared stable identifier as a collision, even if two
     /// descriptors report different additional identifiers for the same disk.
+    #[cfg(windows)]
     pub(crate) fn shares_identifier(&self, other: &Self) -> bool {
         self.identifiers
             .iter()
