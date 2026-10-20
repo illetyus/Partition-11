@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const KNOWN_CONTENT: &[u8] = b"Partition 11 ext4 read-only fixture v1";
+const KNOWN_CONTENT: &[u8] = b"e2fsprogs 1.47.3 independent oracle\n";
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 struct TempFile(PathBuf);
@@ -36,7 +36,7 @@ fn write_temp(contents: &[u8]) -> TempFile {
 }
 
 fn fixture_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ext4-readonly-small.img")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ext4-e2fsprogs-1.47.3.img")
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn mounted_image_denies_a_concurrent_host_writer() {
 #[test]
 fn rejects_relative_host_image_paths_before_file_access() {
     assert!(matches!(
-        ExtImageReader::open(Path::new("tests/fixtures/ext4-readonly-small.img")),
+        ExtImageReader::open(Path::new("tests/fixtures/ext4-e2fsprogs-1.47.3.img")),
         Err(ExtImageError::InvalidImagePath)
     ));
 }

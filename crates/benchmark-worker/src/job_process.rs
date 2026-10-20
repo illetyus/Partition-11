@@ -36,6 +36,7 @@ const MAX_ARGUMENTS: usize = 64;
 const MAX_WARMUP_SECONDS: u32 = 15;
 const MIN_MEASUREMENT_SECONDS: u32 = 2;
 const MAX_MEASUREMENT_SECONDS: u32 = 60;
+const PROCESS_EXIT_ALLOWANCE: Duration = Duration::from_secs(10);
 const TERMINATION_GRACE: Duration = Duration::from_secs(15);
 const MAX_STDOUT_BYTES: usize = 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 16 * 1024;
@@ -293,7 +294,10 @@ impl ProcessLimits {
         }
 
         Ok(Self {
-            execution_timeout: Duration::from_secs(u64::from(warmup_seconds + measurement_seconds)),
+            // The workload duration bounds DiskSpd's I/O phase. Allow bounded
+            // time for process startup, XML output, and normal process exit.
+            execution_timeout: Duration::from_secs(u64::from(warmup_seconds + measurement_seconds))
+                + PROCESS_EXIT_ALLOWANCE,
             termination_grace: TERMINATION_GRACE,
             max_stdout_bytes: MAX_STDOUT_BYTES,
             max_stderr_bytes: MAX_STDERR_BYTES,
@@ -1028,6 +1032,22 @@ mod tests {
             Err(ProcessError::InvalidWorkload)
         ));
         assert!(ProcessLimits::from_workload(15, 60).is_ok());
+    }
+
+    #[test]
+    fn process_deadline_includes_bounded_startup_and_output_allowance() {
+        assert_eq!(
+            ProcessLimits::from_workload(0, 2)
+                .unwrap()
+                .execution_timeout,
+            Duration::from_secs(12)
+        );
+        assert_eq!(
+            ProcessLimits::from_workload(15, 60)
+                .unwrap()
+                .execution_timeout,
+            Duration::from_secs(85)
+        );
     }
 
     #[test]

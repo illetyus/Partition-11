@@ -38,7 +38,7 @@ mod scan_identity;
 mod storage_identity;
 #[cfg(not(windows))]
 mod storage_identity;
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 mod volume_eligibility;
 #[cfg(windows)]
 #[allow(unsafe_code)]
