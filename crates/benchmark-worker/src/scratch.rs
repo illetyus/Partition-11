@@ -854,9 +854,17 @@ mod tests {
         let output = run_process(command, limits, &AtomicBool::new(false))
             .map_err(|error| io::Error::other(error.to_string()))?;
         if output.exit_code != 0 || output.stdout.is_empty() {
+            let stderr = String::from_utf8_lossy(&output.stderr)
+                .replace(&path.to_string_lossy().to_string(), "<probe-file>");
+            let stderr_preview = stderr.chars().take(512).collect::<String>();
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "pinned DiskSpd did not complete the bounded temporary-file read",
+                format!(
+                    "pinned DiskSpd did not complete the bounded temporary-file read: exit_code={}, stdout_bytes={}, stderr_bytes={}, stderr_preview={stderr_preview:?}",
+                    output.exit_code,
+                    output.stdout.len(),
+                    output.stderr.len()
+                ),
             ));
         }
         drop(verified);
