@@ -1,3 +1,12 @@
+## Current P2.5 status — DiskSpd lease sharing blocker (2026-10-20)
+
+PR #53 remains a draft at `cf2f3da7196b5251fd25ce1d4f1028274fe2d103`. GitHub CI (`39458367888`) and Windows Electron UI preview (`39458367924`) pass; the read-only DiskSpd compatibility workflow (`39458367882`) fails at `xml-integration` with `ERROR_SHARING_VIOLATION (32)`. Pinned DiskSpd v2.3 opens an existing target with `FILE_SHARE_READ | FILE_SHARE_WRITE`, omitting `FILE_SHARE_DELETE`.
+
+Local Windows Win32-only disposable-file probes reproduced the conflict and verified the proposed matrix: an ordinary owner handle with read/write access and `FILE_SHARE_READ | FILE_SHARE_WRITE` (no DELETE access/share) permits a DiskSpd-shaped open; DELETE opens fail with error 32 while either handle remains; after both handles close, an exclusive DELETE handle can set disposition and remove the file. No DiskSpd executable, physical disk inventory, or physical-volume workload ran locally. The unknown-identity uniqueness test passed (1/1); the Job Object process tests passed (12, one fixture ignored). These review findings are already addressed in the branch: incomplete identity sets fail closed and children are assigned to the kill-on-close Job Object before resuming.
+
+The approved implementation plan requires stopping integration and obtaining written approval before replacing delete-on-close with a protected exact-object crash-recovery journal. Proposed documents: [ADR-0004](decisions/0004-p2-5-scratch-recovery-journal.md), [spec](superpowers/specs/2026-10-20-p2-5-scratch-recovery-journal.md), and [plan](superpowers/plans/2026-10-20-p2-5-scratch-recovery-journal.md). Keep `BENCHMARK_RUNTIME_ENABLED = false`, benchmark controls disabled, and do not integrate the proposed lifecycle until that approval is recorded.
+
+---
 # Partition 11 implementation plan
 ## Fresh P3/P9 local verification - 2026-10-20
 
