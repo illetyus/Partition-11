@@ -52,10 +52,12 @@ async function runDiskSpd(exe, args) {
 
 async function main() {
   const binary = process.argv[2];
+  const pinnedEngineVersion = process.argv[3];
   if (process.platform !== "win32" || process.env.GITHUB_ACTIONS !== "true" ||
       !process.env.RUNNER_TEMP || !binary ||
       !path.win32.isAbsolute(binary) ||
-      path.win32.basename(binary).toLowerCase() !== "diskspd.exe") {
+      path.win32.basename(binary).toLowerCase() !== "diskspd.exe" ||
+      !/^\d+\.\d+\.\d+$/.test(pinnedEngineVersion || "")) {
     throw new Error("CI-only DiskSpd runner refuses this environment or binary");
   }
   const trustedRoot = await fs.realpath(process.env.RUNNER_TEMP);
@@ -73,7 +75,8 @@ async function main() {
     await lease.verify();
     const parsed = parseDiskSpdXml(xml, {
       profileId: plan.profileId, direction: "read",
-      ownedTargetPath: lease.filePath, pinnedEngineVersion: "2.3.0"
+      ownedTargetPath: lease.filePath, pinnedEngineVersion,
+      measurementSeconds: plan.measurementSeconds
     });
     if (parsed.measurement.iops <= 0 || parsed.measurement.direction !== "read") {
       throw new Error("DiskSpd XML contained no valid read measurement");

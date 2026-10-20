@@ -3,6 +3,7 @@
 //! The request intentionally carries only a fresh SetupAPI path/instance pair.
 //! It never carries an IOCTL, operation selector, or renderer-controlled data.
 
+use crate::storage_identity::{StableIdentifier, StableIdentifierKind, StorageIdentity};
 use partition11_core::windows_layout::{
     DriveLayout, LayoutStyle, PartitionRange, PartitionType, MAX_ENTRIES,
 };
@@ -12,7 +13,7 @@ pub(crate) const MAX_WIRE_BYTES: usize = 65_536;
 const MAX_PATH_UNITS: usize = 16_384;
 const MAX_INSTANCE_ID_UNITS: usize = 2_047;
 const MAGIC: &[u8; 4] = b"P11W";
-const VERSION: u16 = 2;
+const VERSION: u16 = 3;
 const REQUEST_KIND: u16 = 1;
 const REPLY_KIND: u16 = 2;
 
@@ -48,6 +49,7 @@ pub(crate) struct WireMetadata {
     pub capacity_bytes: Result<u64, WireError>,
     pub sectors: Result<WireSectorSizes, WireError>,
     pub bus_type: Result<Option<u32>, WireError>,
+    pub stable_identity: Result<StorageIdentity, WireError>,
     pub partition_layout: Result<DriveLayout, WireError>,
 }
 
@@ -352,6 +354,73 @@ fn validate_layout(layout: &DriveLayout) -> Result<(), ProtocolError> {
     Ok(())
 }
 
+fn validate_storage_identity(identity: &StorageIdentity) -> Result<(), ProtocolError> {
+    if identity.identifiers.is_empty()
+        || identity.identifiers.len() > 64
+        || identity
+            .identifiers
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+    {
+        return Err(ProtocolError::InvalidField);
+    }
+    for identifier in &identity.identifiers {
+        let valid = match identifier.kind {
+            StableIdentifierKind::Eui64 | StableIdentifierKind::FcPhName => {
+                identifier.bytes.len() == 8
+            }
+            StableIdentifierKind::ScsiNameString | StableIdentifierKind::DeviceSerial => {
+                (1..=128).contains(&identifier.bytes.len())
+                    && identifier
+                        .bytes
+                        .iter()
+                        .all(|byte| (0x21..=0x7e).contains(byte))
+            }
+        };
+        if !valid {
+            return Err(ProtocolError::InvalidField);
+        }
+    }
+    Ok(())
+}
+
+fn write_storage_identity(
+    out: &mut Vec<u8>,
+    identity: &StorageIdentity,
+) -> Result<(), ProtocolError> {
+    validate_storage_identity(identity)?;
+    write_u16(out, identity.identifiers.len() as u16);
+    for identifier in &identity.identifiers {
+        write_u8(out, identifier.kind.tag());
+        write_u16(out, identifier.bytes.len() as u16);
+        out.extend_from_slice(&identifier.bytes);
+    }
+    Ok(())
+}
+
+fn read_storage_identity(reader: &mut Reader<'_>) -> Result<StorageIdentity, ProtocolError> {
+    let count = reader.u16()? as usize;
+    if count == 0 || count > 64 {
+        return Err(ProtocolError::InvalidField);
+    }
+    let mut identifiers = Vec::with_capacity(count);
+    for _ in 0..count {
+        let kind =
+            StableIdentifierKind::from_tag(reader.u8()?).ok_or(ProtocolError::InvalidField)?;
+        let length = reader.u16()? as usize;
+        if length == 0 || length > 128 {
+            return Err(ProtocolError::InvalidField);
+        }
+        identifiers.push(StableIdentifier {
+            kind,
+            bytes: reader.take(length)?.to_vec(),
+        });
+    }
+    let identity = StorageIdentity { identifiers };
+    validate_storage_identity(&identity)?;
+    Ok(identity)
+}
+
 fn validate_metadata(metadata: &WireMetadata) -> Result<(), ProtocolError> {
     if metadata.device_number == u32::MAX {
         return Err(ProtocolError::InvalidField);
@@ -375,6 +444,9 @@ fn validate_metadata(metadata: &WireMetadata) -> Result<(), ProtocolError> {
     }
     if matches!(metadata.bus_type, Ok(Some(0))) {
         return Err(ProtocolError::InvalidField);
+    }
+    if let Ok(identity) = &metadata.stable_identity {
+        validate_storage_identity(identity)?;
     }
     if let Ok(layout) = &metadata.partition_layout {
         validate_layout(layout)?;
@@ -507,6 +579,7 @@ fn write_metadata(out: &mut Vec<u8>, metadata: &WireMetadata) -> Result<(), Prot
         write_option_u32(out, *value);
         Ok(())
     })?;
+    write_result(out, &metadata.stable_identity, write_storage_identity)?;
     write_result(out, &metadata.partition_layout, write_layout)
 }
 
@@ -521,6 +594,7 @@ fn read_metadata(reader: &mut Reader<'_>) -> Result<WireMetadata, ProtocolError>
             })
         })?,
         bus_type: read_result(reader, read_option_u32)?,
+        stable_identity: read_result(reader, read_storage_identity)?,
         partition_layout: read_result(reader, read_layout)?,
     };
     validate_metadata(&metadata)?;
@@ -581,6 +655,12 @@ mod tests {
                 physical: Some(4096),
             }),
             bus_type: Ok(Some(17)),
+            stable_identity: Ok(StorageIdentity {
+                identifiers: vec![StableIdentifier {
+                    kind: StableIdentifierKind::Eui64,
+                    bytes: vec![0, 1, 2, 3, 4, 5, 6, 7],
+                }],
+            }),
             partition_layout: Ok(DriveLayout {
                 style: LayoutStyle::Gpt,
                 occupied: vec![PartitionRange {
@@ -661,6 +741,7 @@ mod tests {
             capacity_bytes: Err(WireError::AccessDenied),
             sectors: Err(WireError::DeviceRemoved),
             bus_type: Ok(None),
+            stable_identity: Err(WireError::Unsupported),
             partition_layout: Err(WireError::LayoutTooLarge),
         });
         let bytes = encode_reply(&partial).expect("partial metadata encodes");
@@ -742,7 +823,9 @@ mod tests {
 
         let mut too_many_reply =
             encode_reply(&WorkerReply::Ready(sample_metadata())).expect("encodes");
-        too_many_reply[45..47].copy_from_slice(&129_u16.to_le_bytes());
+        let returned_slots_offset = 8 + 1 + 4 + 9 + 11 + 6 + 14 + 1;
+        too_many_reply[returned_slots_offset..returned_slots_offset + 4]
+            .copy_from_slice(&129_u32.to_le_bytes());
         assert!(matches!(
             decode_reply(&too_many_reply),
             Err(ProtocolError::InvalidField)

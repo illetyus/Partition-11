@@ -13,3 +13,4 @@ path = "src/main.rs"
 
 [dependencies]
 partition11-core = { path = "../core" }
+partition11-ext-reader = { path = "../ext-reader" }

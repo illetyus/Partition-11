@@ -1,4 +1,54 @@
 # Partition 11 — Agent / future-session instructions
+## Fresh P3/P9 verification - 2026-10-20
+
+- A 601-second Windows x64 ext_image fuzz run completed with exit 0: 10,091 inputs, 1,306 coverage counters, 3,016 features, 138 new units, 1,034 MiB peak RSS, no crash or timeout. Inputs were isolated copies of the two e2fsprogs fixtures; the unique temporary corpus was removed after verification.
+- The built x64 agent image worker passed listing, a 36-byte fixture export, and no-overwrite collision checks. The compiled Electron main image-inspection service spawned that agent and passed the same flow. Source fixture hashes stayed unchanged and no staging files remained. This was not a rendered Electron UI test.
+- The regenerated agent CycloneDX 1.5 SBOM contains 11 components. The exact CI component/license/dependency-edge assertions passed locally for partition11-core, partition11-ext-reader, and rust-fs-ext4 v0.8.0; all three report MIT, and the graph binds agent to ext-reader to rust-fs-ext4.
+- GitHub Actions have not run for this branch. The CI-only DiskSpd delete-on-close compatibility gate remains open; runtime stays disabled. No DiskSpd workload or physical-device test was run.
+
+- P2.5 Task 1 local progress: disposable-file tests now reject junction roots, replacement at a captured file path, and FILE_ATTRIBUTE_REPARSE_POINT metadata. Locked worker suite passed 28 with 3 ignored; full locked workspace tests passed agent 122, worker 28, core 20, ext-reader 16. Workspace fmt, warnings-as-errors Clippy, and locked release build passed.
+- The process-exit cleanup acceptance probe was explicitly run and failed as expected: the current lease file remains after owner-process exit without Drop. It stays ignored until the Windows CI DiskSpd compatibility gate passes. Production runtime stays disabled; no DiskSpd or physical-device test ran.
+
+## CURRENT USER-APPROVED P2.5 WORKTREE CHECKPOINT — 2026-10-20
+
+- Continue in `D:\Partition 11\.worktrees\readonly-disk-preview`; the spec and
+  implementation plan are approved. Preserve local changes; no commit, push,
+  PR, merge, physical-device test, or DiskSpd workload has been authorized or
+  performed.
+- A strict benchmark request parser, Rust/TypeScript HMAC golden vector, pure
+  fresh-target validator, and Electron single-run consent controller exist.
+  Main now validates worker result shape, pinned engine version, exact workload,
+  profile/direction, cache policy, timestamp and selected-volume HMAC before
+  accepting a report. It returns only the one-use selection token as the
+  renderer-facing target ID; malformed output latches `cleanup_required`.
+- The agent mode is not dispatched. `BENCHMARK_RUNTIME_ENABLED` remains
+  deliberately `false`; renderer controls remain disabled and no scratch file
+  or worker is launched.
+- Fresh local verification: `npm run test:main` passed 76/76; `npm run build`
+  passed; and capture-disabled `npm run test:ui:win` exited 0 using mock IPC.
+  Locked Windows workspace tests passed: agent 122 (two physical-device probes
+  ignored), benchmark-worker 24 (process-tree fixture and CI DiskSpd probe
+  ignored), core 20, ext-reader 16. Workspace fmt, warning-denying Clippy and
+  locked release build passed. Benchmark protocol passed 8/8 and inventory
+  serialization passed 6/6. The volume scan now retains a validated internal
+  volume-GUID root; target validation rejects absent/malformed roots and the
+  public inventory JSON does not expose it.
+- Fresh P0 audits: npm production graph has 0 vulnerabilities; full npm graph
+  reports 8 Moderate dev-only `sprintf-js` transitive records and no
+  High/Critical findings. Both Rust lockfiles passed `cargo audit` (31 main
+  dependencies and 38 fuzz dependencies). DiskSpd executable SHA-256 matches
+  the manifest and CycloneDX; the target-specific agent CycloneDX is schema 1.5
+  for `x86_64-pc-windows-msvc` and includes `partition11-core`.
+- Live GitHub read on 2026-10-20: `main` remains
+  `130868dbaf60a3dfa71f62f5d5086c985d792cc6` with 5/5 checks green; there is no
+  open PR and no remote `feature/p2.5-volume-eligibility-policy` branch. Those
+  checks do not cover this unpushed worktree. The user authorized the feature-branch commit, push, and draft PR to trigger CI; the DiskSpd gate remains unverified until Actions completes.
+- Next blocker before worker connection: pass the pinned DiskSpd test on a
+  disposable Windows CI filesystem. Then finish production lease ACL/lifecycle,
+  agent dispatch, process-tree cancel/drain/cleanup, native XML binding and all
+  acceptance gates before considering UI enablement. Physical Windows 11
+  acceptance remains the user's later gate. Do not use the existing older ZIP
+  as a new P2.5 candidate.
 
 ## LATEST MERGED CHECKPOINT — P2.5B.3 partition protection metadata (2026-10-19)
 
@@ -26,6 +76,62 @@
 - The user's canonical repo is `D:\Partition 11`; shared general build
   dependencies belong under `D:\Android`. The user performs physical Windows
   11 device acceptance; never substitute a hosted VM result for that gate.
+
+
+
+## CURRENT LOCAL CHECKPOINT — P3-I2 e2fsprogs oracle and fuzz smoke (2026-10-20)
+
+The P3 ext4 image browser remains read-only and uses opaque renderer tokens. The independent e2fsprogs 1.47.3 clean and recovery-pending fixtures now cover known tree/content, dirty/corrupt rejection, unchanged inputs, and 128 deterministic metadata mutations. Agent image export stages beside the destination, syncs, commits without replacement, and cleans only its owned stage; timeout cleanup and staging collisions are tested. Host-process crash recovery remains open.
+
+Local tests passed: ext-reader 16, agent 113 with 2 physical-hardware tests ignored, benchmark-worker 15 with 1 process fixture ignored, core 20, main 60/60, npm build, strict Clippy, and fmt. Windows libFuzzer smoke passed 62 runs / 31 seconds / 1,205 coverage features with no crash. Mocked Windows UI smoke exited 0; screenshots were skipped. No physical inventory, benchmark, or write ran.
+
+Fresh unsigned x64 candidate: release/Partition-11-Windows-x64-p3-final-20261020.zip, SHA-256 53431df71ad04c4d8f7822bb761139afc80ab827bab83f3f28f9706479a4b699; 74 ZIP entries decompressed. It includes the Windows agent and validated target-specific CycloneDX agent SBOM. Packaged capabilities: image inspection and metadata inspection true; both write flags false. GitHub Actions have not run for this branch. The current npm advisory scan remains unverified. P2.5 consent/worker integration is still open; keep formatting, repair, resize, mount, and all writes disabled until their gates are implemented. Physical Windows 11 acceptance remains the user's test gate.
+
+---
+## CURRENT LOCAL WORKTREE CHECKPOINT — P0 audit and P2.5B.4–B.7 pre-hardware work (2026-10-20)
+
+- The local branch feature/p2.5-volume-eligibility-policy is three commits
+  ahead of its local origin/main; this is not a live GitHub refresh.
+- The approved volume-eligibility addendum is in
+  docs/superpowers/specs/2026-10-19-readonly-disk-preview-design.md.
+  Agent protocol v3 HMAC-binds stable identifiers to process-local selection
+  tokens and keeps raw IDs/hash out of renderer output. Missing or overlapping
+  stable IDs fail closed.
+- A separate Windows-only library crate, crates/benchmark-worker, now contains
+  ScratchLease: production creation is limited to the mounted volume root;
+  it atomically creates one random CREATE_NEW bounded file directly there, captures
+  volume serial/128-bit file ID, rejects reparse points and hard links, and
+  performs exact-handle cleanup, including post-create validation failures.
+  It is not a binary and is not packaged or connected to Electron, the agent,
+  DiskSpd, or IPC. Its 4 temporary-directory tests pass; strict workspace
+  Clippy passes. No physical-volume or benchmark test ran.
+- On 2026-10-20, the default Rust suite passed: 104 agent tests, 15
+  benchmark-worker tests, and 19 core tests; two live-device tests and one
+  process-tree fixture were ignored. Workspace Clippy/release build, TypeScript
+  build, and 44 main tests passed. An earlier unfiltered run invoked the live
+  metadata inventory probe and timed out after about six seconds; no write or
+  benchmark ran, and the output does not establish how many read-only requests
+  completed. Both live-device tests are ignored by default. GitHub Actions does not enumerate host disks; its UI smoke uses mocks and DiskSpd is limited to a disposable temporary file. Physical Windows
+  11 acceptance remains the user's test gate.
+- The unsigned/unpacked candidate and SHA-256 are recorded in docs/PLAN.md.
+  That Electron ZIP predates this crate and does not contain it. The agent
+  capability probe remains all false.
+- Live GitHub state was checked on 2026-10-20 through the connected GitHub
+  read API: `main` is `130868dbaf60a3dfa71f62f5d5086c985d792cc6`, its CI,
+  Windows UI, and DiskSpd workflows passed 3/3, and there are no open PRs.
+  The P0, P1, P2, and P2.5 roadmap issues remain open. This local branch has
+  no PR or merge.
+- A v2.3 CI-only DiskSpd manifest and upstream MIT notice are now added locally;
+  its updated workflow still needs GitHub Actions verification. P0 now has
+  production/full-graph npm audit gates, a pinned RustSec lockfile audit, and
+  a pinned CycloneDX generator that will validate and package the agent SBOM;
+  these local workflow edits also need GitHub Actions verification. Local
+  `cargo-audit` and isolated target-SBOM generation passed. Next: finish the
+  remaining consent and process-supervisor integration work before considering
+  any benchmark connection. Keep benchmark IPC, physical writes, elevation,
+  formatting, repair, resize, and mount disabled until all gates pass. Physical
+  Windows 11 acceptance remains the user's test gate.
+
 
 ---
 

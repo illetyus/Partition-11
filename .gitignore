@@ -5,6 +5,8 @@ dist/
 out/
 release/
 target/
+/fuzz/artifacts/
+/fuzz/corpus/
 *.log
 *.tmp
 *.bak
@@ -21,3 +23,7 @@ target/
 *.vhdx
 *.qcow2
 *.iso
+
+!crates/ext-reader/tests/fixtures/ext4-e2fsprogs-1.47.3.img
+
+!crates/ext-reader/tests/fixtures/ext4-e2fsprogs-1.47.3-not-clean.img

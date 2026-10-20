@@ -25,6 +25,7 @@ const DRIVE_RAMDISK: u32 = 6;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct VolumeRecord {
     pub mount_point: Option<String>,
+    pub volume_guid_path: Option<String>,
     pub drive_type: DriveType,
     pub file_system: Option<String>,
     pub total_bytes: Option<u64>,
@@ -103,7 +104,7 @@ fn wide_string(units: &[u16]) -> Option<String> {
 }
 
 #[cfg(windows)]
-fn valid_volume_guid_path(path: &str) -> bool {
+pub(crate) fn valid_volume_guid_path(path: &str) -> bool {
     let bytes = path.as_bytes();
     if !path.starts_with("\\\\?\\Volume{") || !path.ends_with("}\\") || bytes.len() != 49 {
         return false;
@@ -410,6 +411,7 @@ pub(crate) fn inspect(
         let assessment = volume_eligibility::assess(&facts, disks);
         volumes.push(VolumeRecord {
             mount_point,
+            volume_guid_path: Some(volume_guid_path.clone()),
             drive_type: observed_drive_type,
             file_system,
             total_bytes,

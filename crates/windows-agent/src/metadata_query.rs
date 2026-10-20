@@ -7,6 +7,9 @@ use crate::disk_discovery::DiskInterface;
 use crate::disk_metadata::{DiskMetadata, MetadataError, ProbeOutcome};
 use crate::overlapped_ioctl::{run_worker_ioctl, OverlappedIoError};
 use crate::scan_identity::ScanGeneration;
+use crate::storage_identity::{
+    parse_device_serial, parse_storage_device_id_descriptor, IdentityParseError, StorageIdentity,
+};
 use partition11_core::windows_layout::{
     parse_drive_layout, DriveLayout, LayoutError, ENTRY_BYTES, HEADER_BYTES, MAX_RESPONSE_BYTES,
 };
@@ -36,6 +39,7 @@ const ERROR_MORE_DATA: u32 = 234;
 const INITIAL_LAYOUT_SLOTS: usize = 4;
 const DISK_DEVICE_TYPE: u32 = 7;
 const STORAGE_DEVICE_PROPERTY: u32 = 0;
+const STORAGE_DEVICE_ID_PROPERTY: u32 = 2;
 const STORAGE_ACCESS_ALIGNMENT_PROPERTY: u32 = 6;
 const PROPERTY_STANDARD_QUERY: u32 = 0;
 const MAX_DESCRIPTOR: usize = 4096;
@@ -358,6 +362,27 @@ fn parse_bus_type(bytes: &[u8]) -> Result<Option<u32>, MetadataError> {
     Ok((bus != 0).then_some(bus))
 }
 
+fn resolve_stable_identity(
+    storage_ids: &Result<Vec<u8>, MetadataError>,
+    device_descriptor: &Result<Vec<u8>, MetadataError>,
+) -> Result<StorageIdentity, MetadataError> {
+    match storage_ids {
+        Ok(bytes) => match parse_storage_device_id_descriptor(bytes) {
+            Ok(identity) => return Ok(identity),
+            Err(IdentityParseError::NoStableIdentifier) => {}
+            Err(IdentityParseError::Malformed) => return Err(MetadataError::MalformedResponse),
+        },
+        Err(MetadataError::Unsupported) => {}
+        Err(error) => return Err(*error),
+    }
+    let descriptor = device_descriptor.as_ref().map_err(|error| *error)?;
+    match parse_device_serial(descriptor) {
+        Ok(Some(identity)) => Ok(identity),
+        Ok(None) | Err(IdentityParseError::NoStableIdentifier) => Err(MetadataError::Unsupported),
+        Err(IdentityParseError::Malformed) => Err(MetadataError::MalformedResponse),
+    }
+}
+
 fn next_layout_buffer_size(current: usize) -> Result<usize, MetadataError> {
     if !(HEADER_BYTES + ENTRY_BYTES..MAX_RESPONSE_BYTES).contains(&current) {
         return Err(MetadataError::LayoutTooLarge);
@@ -547,15 +572,27 @@ fn query_one(path: &[u16], epoch: &ProbeEpoch<'_>) -> ProbeOutcome {
             .and_then(|b| parse_sector_sizes(&b))
         }))?;
         epoch.ensure_current()?;
-        let bus_type = retain_optional_query(epoch.run(|| {
+        let device_descriptor = retain_optional_query(epoch.run(|| {
             ioctl(
                 &handle,
                 IOCTL_STORAGE_QUERY_PROPERTY,
                 &property_input(STORAGE_DEVICE_PROPERTY),
                 MAX_DESCRIPTOR,
             )
-            .and_then(|b| parse_bus_type(&b))
         }))?;
+        let bus_type = device_descriptor
+            .as_ref()
+            .map_err(|error| *error)
+            .and_then(|bytes| parse_bus_type(bytes));
+        let storage_ids = retain_optional_query(epoch.run(|| {
+            ioctl(
+                &handle,
+                IOCTL_STORAGE_QUERY_PROPERTY,
+                &property_input(STORAGE_DEVICE_ID_PROPERTY),
+                MAX_DESCRIPTOR,
+            )
+        }))?;
+        let stable_identity = resolve_stable_identity(&storage_ids, &device_descriptor);
         epoch.ensure_current()?;
         // Fail closed if capacity or logical-sector geometry is unavailable;
         // otherwise ask Windows for bounded partition metadata only.
@@ -572,12 +609,36 @@ fn query_one(path: &[u16], epoch: &ProbeEpoch<'_>) -> ProbeOutcome {
         // Same-handle number matching cannot prove hardware identity.
         let after = epoch.run(|| query_device_number(&handle))?;
         validate_number_stable(before, after)?;
+        let storage_ids_after = retain_optional_query(epoch.run(|| {
+            ioctl(
+                &handle,
+                IOCTL_STORAGE_QUERY_PROPERTY,
+                &property_input(STORAGE_DEVICE_ID_PROPERTY),
+                MAX_DESCRIPTOR,
+            )
+        }))?;
+        let device_descriptor_after = retain_optional_query(epoch.run(|| {
+            ioctl(
+                &handle,
+                IOCTL_STORAGE_QUERY_PROPERTY,
+                &property_input(STORAGE_DEVICE_PROPERTY),
+                MAX_DESCRIPTOR,
+            )
+        }))?;
+        let stable_identity_after =
+            resolve_stable_identity(&storage_ids_after, &device_descriptor_after);
+        if stable_identity.as_ref().ok() != stable_identity_after.as_ref().ok()
+            && (stable_identity.is_ok() || stable_identity_after.is_ok())
+        {
+            return Err(MetadataError::IdentityChanged);
+        }
         epoch.ensure_current()?;
         let metadata = DiskMetadata {
             device_number: before,
             capacity_bytes,
             sectors,
             bus_type,
+            stable_identity,
             partition_layout,
         };
         // Unregister handle notifications off-callback, then close the handle.

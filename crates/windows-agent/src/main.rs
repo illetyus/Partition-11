@@ -7,6 +7,9 @@
 // Win32 FFI has its own reviewed and bounded safety boundary. Do not add
 // unsafe code elsewhere in the agent or expose raw paths to the renderer.
 #[cfg(windows)]
+#[allow(dead_code)] // Not dispatched until the approved file-lease compatibility gate passes.
+mod benchmark_protocol;
+#[cfg(windows)]
 #[allow(unsafe_code)]
 mod disk_discovery;
 #[cfg(windows)]
@@ -30,6 +33,11 @@ mod overlapped_ioctl;
 mod pnp_notifications;
 #[cfg(windows)]
 mod scan_identity;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod storage_identity;
+#[cfg(not(windows))]
+mod storage_identity;
 #[cfg(any(windows, test))]
 mod volume_eligibility;
 #[cfg(windows)]
@@ -39,7 +47,8 @@ mod volume_inventory;
 #[allow(unsafe_code)]
 mod volume_mapping;
 
-use partition11_core::PHASE_0_CAPABILITIES;
+mod image_worker;
+use partition11_core::read_only_preview_capabilities;
 #[cfg(windows)]
 use std::thread::JoinHandle;
 #[cfg(windows)]
@@ -64,9 +73,9 @@ fn spawn_hard_deadline(
 fn main() {
     match (std::env::args().nth(1).as_deref(), std::env::args().nth(2)) {
         (Some("capabilities"), None) => {
-            let c = PHASE_0_CAPABILITIES;
+            let c = read_only_preview_capabilities();
             println!(
-                "{{\"protocol_version\":1,\"phase\":\"P0\",\"inspect_images\":{},\"inspect_physical_disks\":{},\"write_images\":{},\"write_physical_disks\":{}}}",
+                "{{\"protocol_version\":1,\"phase\":\"P3-preview\",\"inspect_images\":{},\"inspect_physical_disks\":{},\"write_images\":{},\"write_physical_disks\":{}}}",
                 c.inspect_images, c.inspect_physical_disks, c.write_images, c.write_physical_disks
             );
         }
@@ -147,6 +156,12 @@ fn main() {
                     eprintln!("Windows read-only metadata diagnostic rejected: {error}");
                     std::process::exit(3);
                 }
+            }
+        }
+        (Some("image-worker"), None) => {
+            let status = image_worker::run_stdio_worker();
+            if status != 0 {
+                std::process::exit(status);
             }
         }
         #[cfg(windows)]

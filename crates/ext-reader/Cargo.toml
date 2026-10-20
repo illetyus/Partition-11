@@ -1,0 +1,11 @@
+[package]
+name = "partition11-ext-reader"
+version = "0.1.0"
+description = "Bounded read-only ext4 access for image files"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version = "1.87"
+
+[dependencies]
+rust-fs-ext4 = { version = "=0.8.0", default-features = false }

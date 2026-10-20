@@ -1,22 +1,25 @@
 //! Narrow one-shot JSON protocol for Electron's read-only disk preview.
 //!
-//! Only request IDs cross the process boundary. Device paths, instance IDs,
-//! serials, DUIDs, handles and transient Windows device numbers stay inside
-//! the agent. The parser intentionally accepts a tiny JSON subset and rejects
-//! escapes and unknown keys so the protocol surface remains auditable.
+//! Request IDs and an ephemeral Electron-generated HMAC key cross the process
+//! boundary. Device paths, instance IDs, serials, handles and transient Windows
+//! device numbers stay inside the agent; only keyed identity fingerprints leave
+//! it. The parser accepts a tiny JSON subset and rejects escapes and unknown
+//! keys so the protocol surface remains auditable.
 
 use crate::disk_metadata::{MetadataError, ProbeOutcome};
+use crate::storage_identity::{hmac_sha256, StorageIdentity};
 use partition11_core::windows_layout::LayoutStyle;
 use std::io::{Read, Write};
 
 pub(crate) const MAX_REQUEST_BYTES: usize = 1_024;
 pub(crate) const MAX_RESPONSE_BYTES: usize = 256 * 1_024;
-const PROTOCOL_VERSION: u64 = 2;
+const PROTOCOL_VERSION: u64 = 3;
 const OPERATION: &str = "inspectPhysicalDisks";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InventoryRequest {
     pub request_id: String,
+    pub identity_key: [u8; 32],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +127,34 @@ fn valid_request_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
+fn parse_identity_key(value: &str) -> Option<[u8; 32]> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return None;
+    }
+    let mut key = [0_u8; 32];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        let high = (pair[0] as char).to_digit(16)? as u8;
+        let low = (pair[1] as char).to_digit(16)? as u8;
+        key[index] = (high << 4) | low;
+    }
+    Some(key)
+}
+
+fn identity_hash(identity: &StorageIdentity, key: &[u8; 32]) -> Result<String, RequestError> {
+    let digest =
+        hmac_sha256(key, &identity.canonical_bytes()).map_err(|_| RequestError::Malformed)?;
+    let mut hex = String::with_capacity(64);
+    use std::fmt::Write as _;
+    for byte in digest {
+        let _ = write!(hex, "{byte:02x}");
+    }
+    Ok(hex)
+}
+
 pub(crate) fn parse_request(bytes: &[u8]) -> Result<InventoryRequest, RequestError> {
     if bytes.len() > MAX_REQUEST_BYTES {
         return Err(RequestError::Oversize);
@@ -133,6 +164,7 @@ pub(crate) fn parse_request(bytes: &[u8]) -> Result<InventoryRequest, RequestErr
     let mut version = None;
     let mut operation = None;
     let mut request_id = None;
+    let mut identity_key = None;
     loop {
         let key = parser.string()?;
         parser.byte(b':')?;
@@ -140,6 +172,7 @@ pub(crate) fn parse_request(bytes: &[u8]) -> Result<InventoryRequest, RequestErr
             "protocolVersion" if version.is_none() => version = Some(parser.version()?),
             "operation" if operation.is_none() => operation = Some(parser.string()?),
             "requestId" if request_id.is_none() => request_id = Some(parser.string()?),
+            "identityKey" if identity_key.is_none() => identity_key = Some(parser.string()?),
             _ => return Err(RequestError::Malformed),
         }
         parser.whitespace();
@@ -154,6 +187,8 @@ pub(crate) fn parse_request(bytes: &[u8]) -> Result<InventoryRequest, RequestErr
     }
     parser.finish()?;
     let request_id = request_id.ok_or(RequestError::Malformed)?;
+    let identity_key = parse_identity_key(identity_key.ok_or(RequestError::Malformed)?)
+        .ok_or(RequestError::Malformed)?;
     if version != Some(PROTOCOL_VERSION)
         || operation != Some(OPERATION)
         || !valid_request_id(request_id)
@@ -162,6 +197,7 @@ pub(crate) fn parse_request(bytes: &[u8]) -> Result<InventoryRequest, RequestErr
     }
     Ok(InventoryRequest {
         request_id: request_id.to_owned(),
+        identity_key,
     })
 }
 
@@ -221,7 +257,7 @@ pub(crate) fn encode_success(
     use std::fmt::Write as _;
     let _ = write!(
         out,
-        "{{\"protocolVersion\":2,\"requestId\":\"{}\",\"ok\":true,\"disks\":[",
+        "{{\"protocolVersion\":3,\"requestId\":\"{}\",\"ok\":true,\"disks\":[",
         request.request_id
     );
     for (index, outcome) in inventory.disks.iter().enumerate() {
@@ -233,7 +269,7 @@ pub(crate) fn encode_success(
             ProbeOutcome::Unavailable(error) => {
                 let _ = write!(
                     out,
-                    "{{\"ordinal\":{ordinal},\"availability\":\"{}\",\"capacityBytes\":null,\"logicalSectorSize\":null,\"physicalSectorSize\":null,\"busType\":null,\"partitionStyle\":null,\"partitionCount\":null}}",
+                    "{{\"ordinal\":{ordinal},\"availability\":\"{}\",\"capacityBytes\":null,\"logicalSectorSize\":null,\"physicalSectorSize\":null,\"busType\":null,\"partitionStyle\":null,\"partitionCount\":null,\"identityHash\":null}}",
                     error_code(*error)
                 );
             }
@@ -288,6 +324,13 @@ pub(crate) fn encode_success(
                 }
                 out.push_str(",\"partitionCount\":");
                 write_optional(&mut out, count);
+                out.push_str(",\"identityHash\":");
+                if let Ok(identity) = &metadata.stable_identity {
+                    let hash = identity_hash(identity, &request.identity_key)?;
+                    let _ = write!(out, "\"{hash}\"");
+                } else {
+                    out.push_str("null");
+                }
                 out.push('}');
             }
         }
@@ -381,7 +424,7 @@ fn public_file_system(value: &str) -> Option<&'static str> {
 
 pub(crate) fn encode_failure(request: &InventoryRequest, code: &'static str) -> Vec<u8> {
     format!(
-        "{{\"protocolVersion\":2,\"requestId\":\"{}\",\"ok\":false,\"error\":\"{code}\"}}",
+        "{{\"protocolVersion\":3,\"requestId\":\"{}\",\"ok\":false,\"error\":\"{code}\"}}",
         request.request_id
     )
     .into_bytes()
@@ -398,19 +441,22 @@ mod tests {
     use super::*;
     use crate::disk_metadata::DiskMetadata;
     use crate::metadata_query::SectorSizes;
+    use crate::volume_eligibility::{Assessment, DriveType, EligibilityReason};
+    use crate::volume_inventory::VolumeRecord;
     use partition11_core::windows_layout::{DriveLayout, LayoutStyle};
 
     fn request() -> InventoryRequest {
         InventoryRequest {
             request_id: "test-1234".into(),
+            identity_key: [0x11; 32],
         }
     }
 
     #[test]
     fn accepts_only_the_versioned_inventory_request_and_any_key_order() {
         let compact =
-            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"test-1234"}"#;
-        let reordered = br#" { "requestId" : "test-1234", "operation" : "inspectPhysicalDisks", "protocolVersion": 2 } "#;
+            br#"{"protocolVersion":3,"operation":"inspectPhysicalDisks","requestId":"test-1234","identityKey":"1111111111111111111111111111111111111111111111111111111111111111"}"#;
+        let reordered = br#" { "identityKey":"1111111111111111111111111111111111111111111111111111111111111111", "requestId" : "test-1234", "operation" : "inspectPhysicalDisks", "protocolVersion": 3 } "#;
         assert_eq!(parse_request(compact).unwrap(), request());
         assert_eq!(parse_request(reordered).unwrap(), request());
     }
@@ -418,14 +464,14 @@ mod tests {
     #[test]
     fn rejects_unknown_duplicate_missing_escaped_and_invalid_fields() {
         let samples: &[&[u8]] = &[
-            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"x","path":"disk0"}"#,
-            br#"{"protocolVersion":2,"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"x"}"#,
-            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks"}"#,
-            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"bad\\u002dID"}"#,
+            br#"{"protocolVersion":3,"operation":"inspectPhysicalDisks","requestId":"x","path":"disk0"}"#,
+            br#"{"protocolVersion":3,"protocolVersion":3,"operation":"inspectPhysicalDisks","requestId":"x"}"#,
+            br#"{"protocolVersion":3,"operation":"inspectPhysicalDisks"}"#,
+            br#"{"protocolVersion":3,"operation":"inspectPhysicalDisks","requestId":"bad\\u002dID"}"#,
             br#"{"protocolVersion":1,"operation":"inspectPhysicalDisks","requestId":"x"}"#,
-            br#"{"protocolVersion":2,"operation":"metadata-summary","requestId":"x"}"#,
-            br#"{"protocolVersion":2,"operation":"inspectPhysicalDisks","requestId":"x\ny"}"#,
-            b"{\x0b\"protocolVersion\":2,\"operation\":\"inspectPhysicalDisks\",\"requestId\":\"x\"}",
+            br#"{"protocolVersion":3,"operation":"metadata-summary","requestId":"x"}"#,
+            br#"{"protocolVersion":3,"operation":"inspectPhysicalDisks","requestId":"x\ny"}"#,
+            b"{\x0b\"protocolVersion\":3,\"operation\":\"inspectPhysicalDisks\",\"requestId\":\"x\"}",
         ];
         for sample in samples {
             assert_eq!(parse_request(sample), Err(RequestError::Malformed));
@@ -450,6 +496,7 @@ mod tests {
                 physical: Some(4096),
             }),
             bus_type: Ok(Some(17)),
+            stable_identity: Err(MetadataError::Unsupported),
             partition_layout: Ok(DriveLayout {
                 style: LayoutStyle::Gpt,
                 occupied: Vec::new(),
@@ -474,5 +521,73 @@ mod tests {
         assert!(!json.contains("path"));
         assert!(!json.contains("instance"));
         assert!(json.contains("\"volumes\":[]"));
+    }
+
+    #[test]
+    fn response_does_not_expose_internal_volume_guid_paths() {
+        let marker = "\\\\?\\Volume{deadbeef-dead-beef-dead-beefdeadbeef}\\";
+        let inventory = crate::disk_metadata::ReadOnlyInventory {
+            disks: Vec::new(),
+            volumes: vec![VolumeRecord {
+                mount_point: Some("E:\\".into()),
+                volume_guid_path: Some(marker.into()),
+                drive_type: DriveType::Fixed,
+                file_system: Some("NTFS".into()),
+                total_bytes: Some(10_000),
+                available_bytes: Some(5_000),
+                read_only: false,
+                assessment: Assessment {
+                    eligible: true,
+                    reason: EligibilityReason::Eligible,
+                    disk_ordinal: Some(1),
+                    partition_number: Some(1),
+                },
+            }],
+        };
+        let json = String::from_utf8(encode_success(&request(), &inventory).unwrap()).unwrap();
+        assert!(!json.contains(marker));
+        assert!(!json.contains("deadbeef"));
+        assert!(!json.contains("volumeGuidPath"));
+        assert!(json.contains("\"mountPoint\":\"E:\\\\\""));
+    }
+
+    #[test]
+    fn response_emits_a_request_keyed_identity_hash_without_the_raw_identifier() {
+        let metadata = DiskMetadata {
+            device_number: 7,
+            capacity_bytes: Ok(1_000_000),
+            sectors: Ok(SectorSizes {
+                logical: Some(512),
+                physical: Some(4096),
+            }),
+            bus_type: Ok(Some(17)),
+            stable_identity: Ok(crate::storage_identity::StorageIdentity {
+                identifiers: vec![crate::storage_identity::StableIdentifier {
+                    kind: crate::storage_identity::StableIdentifierKind::Eui64,
+                    bytes: vec![0, 1, 2, 3, 4, 5, 6, 7],
+                }],
+            }),
+            partition_layout: Ok(DriveLayout {
+                style: LayoutStyle::Gpt,
+                occupied: Vec::new(),
+                returned_slots: 128,
+            }),
+        };
+        let inventory = crate::disk_metadata::ReadOnlyInventory {
+            disks: vec![ProbeOutcome::Ready(metadata)],
+            volumes: Vec::new(),
+        };
+        let first = encode_success(&request(), &inventory).unwrap();
+        let first = String::from_utf8(first).unwrap();
+        assert!(first.contains(
+            "\"identityHash\":\"a96560f078aaa53ce68d4abf16f5ec11f5775c96f9781cd97577d3cebebe6888\""
+        ), "response: {first}");
+        assert!(!first.contains("0001020304050607"));
+
+        let mut second_request = request();
+        second_request.identity_key = [0x22; 32];
+        let second =
+            String::from_utf8(encode_success(&second_request, &inventory).unwrap()).unwrap();
+        assert_ne!(first, second);
     }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "partition11-benchmark-worker"
+version = "0.1.0"
+description = "Internal file-backed benchmark safety primitives; not wired to Electron"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+path = "src/lib.rs"

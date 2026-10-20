@@ -3,10 +3,11 @@ import { FluentProvider, webDarkTheme, webLightTheme } from "@fluentui/react-com
 import type { AppStatus, DisplayInfo, ReadOnlyDisk, ReadOnlyDiskInventory, ReadOnlyVolume } from "../shared/protocol";
 import { sampleDisks, validateExtLabel, type SampleDisk } from "./previewData";
 import { BenchmarkPanel } from "./BenchmarkPanel";
+import { ImageInspectionPanel } from "./ImageInspectionPanel";
 import { BENCHMARK_PREVIEW_AVAILABILITY, type BenchmarkAvailability } from "../shared/benchmark";
 
 type ThemePreference = "system" | "light" | "dark";
-type AppView = "inventory" | "demo";
+type AppView = "inventory" | "image" | "demo";
 type Glyph = "drive" | "usb" | "lock" | "moon" | "sun" | "shield" | "alert" | "sliders" | "chevron" | "check";
 const THEME_KEY = "partition11.theme";
 
@@ -155,6 +156,8 @@ function volumeEligibilityText(volume: ReadOnlyVolume): string {
     case "invalid_extent": return "Birim aralığı geçersiz";
     case "unknown_disk": return "Fiziksel disk eşleşmesi doğrulanamadı";
     case "ambiguous_disk": return "Disk eşleşmesi belirsiz";
+    case "identity_unavailable": return "Kalıcı disk kimliği doğrulanamadı";
+    case "ambiguous_identity": return "Disk kimliği yineleniyor veya belirsiz";
     case "boot_disk": return "Önyükleme diski korumalı";
     case "partition_unmapped": return "Bölüm eşleşmesi doğrulanamadı";
     case "protected_partition": return "Sistem/kurtarma bölümü korumalı";
@@ -380,12 +383,13 @@ export function App() {
           <div className="topbar-brand">
             <span className="app-logo"><Icon name="drive" size={23}/></span>
             <span className="app-title">Partition 11</span>
-            <span className="preview-pill" title={activeView === "inventory" ? "Salt okunur gerçek disk envanteri" : "Sentetik demo verileri"}>{activeView === "inventory" ? "Salt okunur" : "Demo"}</span>
+            <span className="preview-pill" title={activeView === "inventory" ? "Salt okunur gerçek disk envanteri" : activeView === "image" ? "Salt okunur EXT4 dosya imajı" : "Sentetik demo verileri"}>{activeView === "inventory" ? "Salt okunur" : activeView === "image" ? "EXT4 imajı" : "Demo"}</span>
           </div>
           <div className="topbar-actions">
             <div className="view-switch" role="group" aria-label="Uygulama görünümü">
               <button type="button" className={activeView === "inventory" ? "active" : ""} aria-pressed={activeView === "inventory"} onClick={() => setActiveView("inventory")}>Disk envanteri</button>
               <button type="button" className={activeView === "demo" ? "active" : ""} aria-pressed={activeView === "demo"} onClick={() => setActiveView("demo")}>Demo</button>
+              <button type="button" className={activeView === "image" ? "active" : ""} aria-pressed={activeView === "image"} onClick={() => setActiveView("image")}>İmaj incele</button>
             </div>
             <button type="button" className="theme-toggle" onClick={toggleTheme} title={dark ? "Açık temaya geç" : "Koyu temaya geç"} aria-label={dark ? "Açık temaya geç" : "Koyu temaya geç"} aria-pressed={dark}>
               <Icon name={dark ? "sun" : "moon"} size={20}/>
@@ -394,7 +398,7 @@ export function App() {
           </div>
         </header>
 
-        {activeView === "inventory" ? <DiskInventoryPanel/> : <div className="main-layout">
+        {activeView === "inventory" ? <DiskInventoryPanel/> : activeView === "image" ? <ImageInspectionPanel/> : <div className="main-layout">
           <aside className="sidebar" aria-labelledby="disk-list-heading">
             <div className="sidebar-title-row">
               <h2 id="disk-list-heading">Diskler</h2>
@@ -497,9 +501,9 @@ export function App() {
 
         <footer className="statusbar">
           <div className="status-left"><span className={status && !bridgeUnavailable ? "status-dot connected" : "status-dot"}/>
-            <span>{bridgeUnavailable ? "Tarayıcı önizlemesi" : status ? "Hazır" : "Arayüz yükleniyor"}{activeView === "inventory" ? " · Salt okunur envanter" : " · Örnek veriler"}</span>
+            <span>{bridgeUnavailable ? "Tarayıcı önizlemesi" : status ? "Hazır" : "Arayüz yükleniyor"}{activeView === "inventory" ? " · Salt okunur envanter" : activeView === "image" ? " · EXT4 imajı" : " · Örnek veriler"}</span>
           </div>
-          <div className="status-right">{appearanceError ? "Pencere başlığı teması eşitlenemedi · " : ""}{display ? "Ekran ölçeği: %" + Math.round(display.scaleFactor * 100) + " · " : ""}{activeView === "inventory" ? "Yazma ve hedef seçimi kapalı" : "Sentetik demo · Gerçek disk erişimi yok"}</div>
+          <div className="status-right">{appearanceError ? "Pencere başlığı teması eşitlenemedi · " : ""}{display ? "Ekran ölçeği: %" + Math.round(display.scaleFactor * 100) + " · " : ""}{activeView === "inventory" ? "Yazma ve hedef seçimi kapalı" : activeView === "image" ? "İmajdan salt okunur inceleme" : "Sentetik demo · Gerçek disk erişimi yok"}</div>
         </footer>
       </div>
     </FluentProvider>

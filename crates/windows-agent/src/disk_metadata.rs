@@ -46,6 +46,7 @@ pub(crate) struct DiskMetadata {
     pub capacity_bytes: Result<u64, MetadataError>,
     pub sectors: Result<SectorSizes, MetadataError>,
     pub bus_type: Result<Option<u32>, MetadataError>,
+    pub stable_identity: Result<crate::storage_identity::StorageIdentity, MetadataError>,
     pub partition_layout: Result<DriveLayout, MetadataError>,
 }
 
@@ -221,6 +222,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "enumerates and queries physical Windows disks; reserved for the user's manual hardware acceptance"]
     fn metadata_probe_stays_local_and_non_elevated() {
         match inspect_discovered_devices() {
             Ok(inventory) => {

@@ -1,6 +1,7 @@
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import {
-  BENCHMARK_PROFILES,
+  BENCHMARK_ENGINE_VERSION, BENCHMARK_MAX_MEASUREMENT_SECONDS,
+  BENCHMARK_MIN_MEASUREMENT_SECONDS, BENCHMARK_PROFILES,
   isFiniteMeasurement,
   type BenchmarkDirection,
   type BenchmarkMeasurement,
@@ -21,7 +22,8 @@ export type TrustedDiskSpdRun = Readonly<{
   profileId: BenchmarkProfileId;
   direction: BenchmarkDirection;
   ownedTargetPath: string;
-  pinnedEngineVersion: string;
+  pinnedEngineVersion: typeof BENCHMARK_ENGINE_VERSION;
+  measurementSeconds: number;
 }>;
 
 export type ParsedDiskSpdRun = Readonly<{
@@ -89,6 +91,12 @@ function percentiles(latency: XmlRecord, direction: BenchmarkDirection): { p95: 
 }
 
 export function parseDiskSpdXml(xml: string, trusted: TrustedDiskSpdRun): ParsedDiskSpdRun {
+  if (trusted.pinnedEngineVersion !== BENCHMARK_ENGINE_VERSION ||
+      !Number.isSafeInteger(trusted.measurementSeconds) ||
+      trusted.measurementSeconds < BENCHMARK_MIN_MEASUREMENT_SECONDS ||
+      trusted.measurementSeconds > BENCHMARK_MAX_MEASUREMENT_SECONDS) {
+    throw new Error("Invalid trusted DiskSpd run policy");
+  }
   if (typeof xml !== "string" ||
       Buffer.byteLength(xml, "utf8") === 0 ||
       Buffer.byteLength(xml, "utf8") > MAX_XML_BYTES ||
@@ -120,7 +128,8 @@ export function parseDiskSpdXml(xml: string, trusted: TrustedDiskSpdRun): Parsed
   const root = record(doc.Results, "Results");
   const system = record(root.System, "System");
   const version = requiredString(record(system.Tool, "System.Tool").Version, "System.Tool.Version");
-  if (!/^[0-9][a-zA-Z0-9.+_-]{0,31}$/.test(version) || version !== trusted.pinnedEngineVersion) {
+  if (!/^[0-9][a-zA-Z0-9.+_-]{0,31}$/.test(version) ||
+      version !== trusted.pinnedEngineVersion || version !== BENCHMARK_ENGINE_VERSION) {
     throw new Error("DiskSpd version mismatch");
   }
 
@@ -145,7 +154,11 @@ export function parseDiskSpdXml(xml: string, trusted: TrustedDiskSpdRun): Parsed
   const span = record(only(root.TimeSpan, "Results.TimeSpan"), "Results.TimeSpan");
   if (span.Error !== undefined) throw new Error("DiskSpd test reported an error");
   const durationSeconds = numeric(span.TestTimeSeconds, "TestTimeSeconds", true, false);
-  if (durationSeconds > MAX_DURATION_SECONDS) throw new Error("Unexpected benchmark duration");
+  const durationToleranceSeconds = Math.max(0.25, trusted.measurementSeconds * 0.1);
+  if (durationSeconds > MAX_DURATION_SECONDS ||
+      Math.abs(durationSeconds - trusted.measurementSeconds) > durationToleranceSeconds) {
+    throw new Error("Unexpected benchmark duration");
+  }
   // Results.TimeSpan.RequestCount is the timespan-wide shared-thread
   // setting (often 0 for per-target -o), NOT the target queue depth.
   // The authorized Q depth is checked from Profile.Target.RequestCount.

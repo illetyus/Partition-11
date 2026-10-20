@@ -15,6 +15,40 @@ and is not part of the permanent CI.
 - Dependencies may still need vulnerability updates; lockfiles do not
   establish correctness or absence of vulnerabilities.
 
+## Dependency audit gates
+
+The CI Electron job audits the production npm graph at Moderate and above and
+the complete npm graph at High and Critical. As of 2026-10-20, production
+dependencies have no advisories. The development graph has one Moderate
+`sprintf-js` advisory repeated across eight transitive package records; no
+patched `sprintf-js` release is listed upstream. The temporary acceptance and
+review deadline are recorded in
+[SECURITY_DEPENDENCY_EXCEPTIONS.md](SECURITY_DEPENDENCY_EXCEPTIONS.md).
+
+The Rust CI job installs the pinned RustSec `cargo-audit` tool outside the
+checkout and audits the committed `Cargo.lock` by explicit path, so it does
+not generate or rewrite a lockfile. Passing local tests is not a substitute
+for the GitHub Actions result.
+
+## Local verification — 2026-10-20
+
+Fresh local audit results: `npm audit --omit=dev --audit-level=moderate` found
+0 production vulnerabilities. `npm audit --audit-level=high` reported the
+documented 8 Moderate development-only `sprintf-js` transitive records and no
+High/Critical findings. `cargo audit --file Cargo.lock` passed for 31 locked
+crates and `cargo audit --file fuzz/Cargo.lock` passed for 38; both loaded 1,338
+RustSec advisories. No dependency was changed by the audits.
+
+The pinned DiskSpd executable SHA-256 matches both its manifest and CycloneDX
+1.5 component record. A fresh run of the exact Windows agent SBOM generator
+produced 11 components for `x86_64-pc-windows-msvc`, including
+`partition11-core`, `partition11-ext-reader` 0.1.0, and `rust-fs-ext4` 0.8.0
+with MIT expressions and verified dependency edges. The local Windows workflow
+now asserts these components, versions, licenses, and edges. The current local
+worktree still has no GitHub CI result: live `main` is
+`130868dbaf60a3dfa71f62f5d5086c985d792cc6` with 5/5 checks green, but the
+feature worktree is unpushed and is not covered by those checks.
+
 ## Release blockers
 
 1. Manual verification of installed Electron Windows binary and preload.
@@ -23,6 +57,16 @@ and is not part of the permanent CI.
    fonts/icons, Electron/Chromium notices and installer.
 4. Package signature and provenance strategy.
 5. No physical disk I/O or formatting until later dedicated acceptance gates.
+
+The Windows preview workflow generates a target-specific CycloneDX 1.5 SBOM
+for the `partition11-agent` Cargo binary, validates that it includes the local
+`partition11-core` dependency, and places a copy beside the packaged agent in
+the preview ZIP. The SBOM covers the resolved Cargo graph for
+`x86_64-pc-windows-msvc`; it does not inventory Windows system libraries, the
+Windows SDK, Electron/Chromium, or other files in the unpacked package. Those
+remain part of the final P9 release SBOM and license review. The local
+generation command was validated against a temporary copy of the workspace;
+the GitHub Actions result remains pending.
 
 ## Local checks
 

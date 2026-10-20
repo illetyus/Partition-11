@@ -61,6 +61,8 @@ pub(crate) enum EligibilityReason {
     InvalidExtent,
     UnknownDisk,
     AmbiguousDisk,
+    IdentityUnavailable,
+    AmbiguousIdentity,
     BootDisk,
     PartitionUnmapped,
     ProtectedPartition,
@@ -85,6 +87,8 @@ impl EligibilityReason {
             Self::InvalidExtent => "invalid_extent",
             Self::UnknownDisk => "unknown_disk",
             Self::AmbiguousDisk => "ambiguous_disk",
+            Self::IdentityUnavailable => "identity_unavailable",
+            Self::AmbiguousIdentity => "ambiguous_identity",
             Self::BootDisk => "boot_disk",
             Self::PartitionUnmapped => "partition_unmapped",
             Self::ProtectedPartition => "protected_partition",
@@ -280,6 +284,26 @@ pub(crate) fn assess(volume: &VolumeFacts, disks: &[ProbeOutcome]) -> Assessment
     if matching_disks.next().is_some() {
         return deny(EligibilityReason::AmbiguousDisk);
     }
+    let Ok(identity) = &metadata.stable_identity else {
+        return deny(EligibilityReason::IdentityUnavailable);
+    };
+    if disks.iter().any(|outcome| match outcome {
+        ProbeOutcome::Ready(candidate) => candidate.stable_identity.is_err(),
+        ProbeOutcome::Unavailable(_) => true,
+    }) {
+        return deny(EligibilityReason::IdentityUnavailable);
+    }
+    let identity_matches = disks
+        .iter()
+        .filter_map(|outcome| match outcome {
+            ProbeOutcome::Ready(candidate) => candidate.stable_identity.as_ref().ok(),
+            ProbeOutcome::Unavailable(_) => None,
+        })
+        .filter(|candidate| identity.shares_identifier(candidate))
+        .count();
+    if identity_matches != 1 {
+        return deny(EligibilityReason::AmbiguousIdentity);
+    }
     let Ok(capacity_bytes) = metadata.capacity_bytes else {
         return deny(EligibilityReason::UnknownDisk);
     };
@@ -354,6 +378,12 @@ mod tests {
                 physical: Some(4096),
             }),
             bus_type: Ok(Some(7)),
+            stable_identity: Ok(crate::storage_identity::StorageIdentity {
+                identifiers: vec![crate::storage_identity::StableIdentifier {
+                    kind: crate::storage_identity::StableIdentifierKind::Eui64,
+                    bytes: vec![0, 1, 2, 3, 4, 5, 6, 7],
+                }],
+            }),
             partition_layout: Ok(layout),
         })
     }
@@ -384,6 +414,98 @@ mod tests {
             occupied: vec![partition(1, 1024 * 1024, 8 * GIB, basic_data_gpt())],
             returned_slots: 1,
         })
+    }
+
+    #[test]
+    fn missing_or_duplicate_storage_identity_keeps_volume_ineligible() {
+        let layout = DriveLayout {
+            style: LayoutStyle::Gpt,
+            occupied: vec![partition(1, 1024 * 1024, 8 * GIB, basic_data_gpt())],
+            returned_slots: 128,
+        };
+        let facts = volume();
+        let mut missing = disk(layout.clone());
+        if let ProbeOutcome::Ready(metadata) = &mut missing {
+            metadata.stable_identity = Err(MetadataError::Unsupported);
+        }
+        assert_eq!(
+            assess(&facts, &[missing]).reason,
+            EligibilityReason::IdentityUnavailable
+        );
+
+        let first = disk(layout.clone());
+        let mut second = disk(layout);
+        if let ProbeOutcome::Ready(metadata) = &mut second {
+            metadata.device_number = 5;
+        }
+        assert_eq!(
+            assess(&facts, &[first, second]).reason,
+            EligibilityReason::AmbiguousIdentity
+        );
+    }
+
+    #[test]
+    fn unknown_identity_on_another_scanned_disk_prevents_uniqueness_claim() {
+        let layout = DriveLayout {
+            style: LayoutStyle::Gpt,
+            occupied: vec![partition(1, 1024 * 1024, 8 * GIB, basic_data_gpt())],
+            returned_slots: 128,
+        };
+        let facts = volume();
+
+        assert_eq!(
+            assess(
+                &facts,
+                &[
+                    disk(layout.clone()),
+                    ProbeOutcome::Unavailable(MetadataError::Unsupported)
+                ]
+            )
+            .reason,
+            EligibilityReason::IdentityUnavailable
+        );
+
+        let mut second = disk(layout.clone());
+        if let ProbeOutcome::Ready(metadata) = &mut second {
+            metadata.device_number = 5;
+            metadata.stable_identity = Err(MetadataError::Unsupported);
+        }
+        assert_eq!(
+            assess(&facts, &[disk(layout), second]).reason,
+            EligibilityReason::IdentityUnavailable
+        );
+    }
+
+    #[test]
+    fn partially_overlapping_storage_identity_sets_are_ambiguous() {
+        let layout = DriveLayout {
+            style: LayoutStyle::Gpt,
+            occupied: vec![partition(1, 1024 * 1024, 8 * GIB, basic_data_gpt())],
+            returned_slots: 128,
+        };
+        let mut first = disk(layout.clone());
+        if let ProbeOutcome::Ready(metadata) = &mut first {
+            metadata.stable_identity = Ok(crate::storage_identity::StorageIdentity {
+                identifiers: vec![
+                    crate::storage_identity::StableIdentifier {
+                        kind: crate::storage_identity::StableIdentifierKind::Eui64,
+                        bytes: vec![0, 1, 2, 3, 4, 5, 6, 7],
+                    },
+                    crate::storage_identity::StableIdentifier {
+                        kind: crate::storage_identity::StableIdentifierKind::ScsiNameString,
+                        bytes: b"naa.6001405abc123456".to_vec(),
+                    },
+                ],
+            });
+        }
+        let mut second = disk(layout);
+        if let ProbeOutcome::Ready(metadata) = &mut second {
+            metadata.device_number = 5;
+        }
+        assert_eq!(
+            assess(&volume(), &[first, second]).reason,
+            EligibilityReason::AmbiguousIdentity
+        );
     }
 
     #[test]

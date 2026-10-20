@@ -16,6 +16,9 @@ const disk = {
   partitionCount: 2
 } as const;
 
+const identityHash = "ab".repeat(32);
+const agentDisk = { ...disk, identityHash } as const;
+
 const volume = {
   ordinal: 1,
   mountPoint: "E:\\",
@@ -26,23 +29,53 @@ const volume = {
   readOnly: false,
   eligible: true,
   eligibilityReason: "eligible",
-  diskOrdinal: 2,
+  diskOrdinal: 1,
   partitionNumber: 1
 } as const;
 
-function success(requestId: string, disks: unknown[] = [disk], volumes: unknown[] = [volume]) {
-  return { protocolVersion: 2, requestId, ok: true, disks, volumes };
+function success(requestId: string, disks: unknown[] = [agentDisk], volumes: unknown[] = [volume]) {
+  return { protocolVersion: 3, requestId, ok: true, disks, volumes };
 }
 
 test("agent response accepts the bounded public allowlist and rejects private or extra fields", () => {
-  assert.deepEqual(validateAgentResponse(success("req-1"), "req-1"), { ok: true, disks: [disk], volumes: [volume] });
+  assert.deepEqual(validateAgentResponse(success("req-1", [agentDisk]), "req-1"), { ok: true, disks: [agentDisk], volumes: [volume] });
   assert.equal(validateAgentResponse({ ...success("req-1"), serial: "secret" }, "req-1"), null);
   assert.equal(validateAgentResponse(success("stale"), "req-1"), null);
-  assert.equal(validateAgentResponse(success("req-1", [{ ...disk, deviceNumber: 8 }]), "req-1"), null);
-  assert.equal(validateAgentResponse(success("req-1", [{ ...disk, capacityBytes: "01" }]), "req-1"), null);
-  assert.equal(validateAgentResponse(success("req-1", [{ ...disk, logicalSectorSize: 513 }]), "req-1"), null);
-  assert.equal(validateAgentResponse(success("req-1", [{ ...disk, partitionCount: 129 }]), "req-1"), null);
-  assert.equal(validateAgentResponse(success("req-1", [{ ...disk, ordinal: 2 }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{ ...agentDisk, deviceNumber: 8 }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{ ...agentDisk, capacityBytes: "01" }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{ ...agentDisk, logicalSectorSize: 513 }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{ ...agentDisk, partitionCount: 129 }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{ ...agentDisk, ordinal: 2 }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [disk]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{ ...agentDisk, identityHash: "ABC" }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{ ...agentDisk, identityHash: `${identityHash}\n` }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{ ...agentDisk, identityHash: null }]), "req-1"), null);
+  assert.equal(validateAgentResponse(success("req-1", [{
+    ...agentDisk,
+    availability: "device_unavailable",
+    capacityBytes: null,
+    logicalSectorSize: null,
+    physicalSectorSize: null,
+    busType: null,
+    partitionStyle: null,
+    partitionCount: null
+  }]), "req-1"), null);
+  assert.deepEqual(
+    validateAgentResponse(success("req-1", [{ ...agentDisk, identityHash: null }], [{
+      ...volume,
+      eligible: false,
+      eligibilityReason: "identity_unavailable",
+      diskOrdinal: null,
+      partitionNumber: null
+    }]), "req-1"),
+    { ok: true, disks: [{ ...agentDisk, identityHash: null }], volumes: [{
+      ...volume,
+      eligible: false,
+      eligibilityReason: "identity_unavailable",
+      diskOrdinal: null,
+      partitionNumber: null
+    }] }
+  );
   assert.equal(validateAgentResponse(success("req-1", [disk], [{ ...volume, volumeGuidPath: "\\\\?\\Volume{secret}\\" }]), "req-1"), null);
   assert.equal(validateAgentResponse(success("req-1", [disk], [{ ...volume, eligibilityReason: "system_volume" }]), "req-1"), null);
   assert.equal(validateAgentResponse(success("req-1", [disk], [{ ...volume, mountPoint: "C:\\Users\\name" }]), "req-1"), null);
@@ -52,7 +85,7 @@ test("agent response rejects oversized inventory and unrecognized error codes", 
   assert.equal(validateAgentResponse(success("req-1", Array(257).fill(disk)), "req-1"), null);
   assert.equal(validateAgentResponse(success("req-1", [disk], Array(257).fill(volume)), "req-1"), null);
   assert.equal(validateAgentResponse({ protocolVersion: 1, requestId: "req-1", ok: false, error: "C:\\raw-path" }, "req-1"), null);
-  assert.deepEqual(validateAgentResponse({ protocolVersion: 2, requestId: "req-1", ok: false, error: "scan_timeout" }, "req-1"), { ok: false, error: "scan_timeout" });
+  assert.deepEqual(validateAgentResponse({ protocolVersion: 3, requestId: "req-1", ok: false, error: "scan_timeout" }, "req-1"), { ok: false, error: "scan_timeout" });
 });
 
 class FakeChild extends EventEmitter {
@@ -178,7 +211,9 @@ test("only one inventory process runs at a time and a mismatched request ID is d
 });
 
 test("valid agent response is timestamped only after a clean exit", async () => {
+  let agentRequest: Record<string, unknown> | undefined;
   const child = new FakeChild((request, process) => {
+    agentRequest = request;
     process.stdout.end(JSON.stringify(success(String(request.requestId))) + "\n");
     setImmediate(() => process.emit("close", 0, null));
   });
@@ -197,15 +232,50 @@ test("valid agent response is timestamped only after a clean exit", async () => 
     disks: [disk],
     volumes: [{ ...volume, selectionToken: result.volumes[0]?.selectionToken }]
   });
+  assert.equal(agentRequest?.protocolVersion, 3);
+  assert.equal(agentRequest?.operation, "inspectPhysicalDisks");
+  assert.equal(typeof agentRequest?.identityKey, "string");
+  assert.match(agentRequest?.identityKey as string, /^[0-9a-f]{64}$/);
+  assert.equal(JSON.stringify(result).includes(identityHash), false);
   const token = result.volumes[0]?.selectionToken;
   assert.ok(token);
-  assert.deepEqual(service.resolveSelectionToken(token), {
+  const resolved = {
     volumeOrdinal: 1,
     mountPoint: "E:\\",
     fileSystem: "NTFS",
     totalBytes: "10737418240",
     availableBytes: "4294967296",
-    diskOrdinal: 2,
-    partitionNumber: 1
+    diskOrdinal: 1,
+    partitionNumber: 1,
+    identityHash
+  };
+  assert.deepEqual(service.resolveSelectionToken(token), resolved);
+  const consumed = service.consumeSelectionToken(token);
+  assert.ok(consumed);
+  assert.deepEqual(consumed.selection, resolved);
+  assert.equal(consumed.identityKey.toString("hex"), agentRequest?.identityKey);
+  assert.equal(consumed.identityKey.length, 32);
+  assert.equal(service.resolveSelectionToken(token), null);
+  assert.equal(service.consumeSelectionToken(token), null);
+});
+
+test("selection tokens expire after one minute even without a later inventory scan", async () => {
+  let now = new Date("2026-10-19T12:00:00.000Z");
+  const child = new FakeChild((request, process) => {
+    process.stdout.end(JSON.stringify(success(String(request.requestId))) + "\n");
+    setImmediate(() => process.emit("close", 0, null));
   });
+  const service = new ReadOnlyDiskInventoryService("agent.exe", {
+    exists: () => true,
+    spawn: () => asChild(child),
+    now: () => now
+  });
+  const result = await service.scan();
+  assert.equal(result.status, "ok");
+  if (result.status !== "ok") throw new Error("expected successful inventory");
+  const token = result.volumes[0]?.selectionToken;
+  assert.ok(token);
+  now = new Date(now.getTime() + 60_001);
+  assert.equal(service.consumeSelectionToken(token), null);
+  assert.equal(service.resolveSelectionToken(token), null);
 });

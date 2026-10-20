@@ -8,16 +8,23 @@ export const IPC = Object.freeze({
   DISPLAY_CHANGED: "partition11:display-changed",
   TITLEBAR_THEME: "partition11:titlebar-theme",
   BENCHMARK_AVAILABILITY: "partition11:benchmark-availability",
-  READ_ONLY_DISK_INVENTORY: "partition11:read-only-disk-inventory"
+  BENCHMARK_START: "partition11:benchmark-start",
+  BENCHMARK_CANCEL: "partition11:benchmark-cancel",
+  READ_ONLY_DISK_INVENTORY: "partition11:read-only-disk-inventory",
+  IMAGE_OPEN: "partition11:image-open",
+  IMAGE_LIST_DIRECTORY: "partition11:image-list-directory",
+  IMAGE_NEXT_PAGE: "partition11:image-next-page",
+  IMAGE_EXPORT_FILE: "partition11:image-export-file",
+  IMAGE_CLOSE_SESSION: "partition11:image-close-session"
 } as const);
 
 export type AppStatus = Readonly<{
   protocolVersion: 1;
   appVersion: string;
-  phase: "P0";
+  phase: "P0" | "P3-preview";
   agentConnected: false;
   capabilities: Readonly<{
-    inspectImages: false;
+    inspectImages: boolean;
     inspectPhysicalDisks: boolean;
     writeImages: false;
     writePhysicalDisks: false;
@@ -60,6 +67,8 @@ export type VolumeEligibilityReason =
   | "invalid_extent"
   | "unknown_disk"
   | "ambiguous_disk"
+  | "identity_unavailable"
+  | "ambiguous_identity"
   | "boot_disk"
   | "partition_unmapped"
   | "protected_partition"
@@ -95,6 +104,44 @@ export type ReadOnlyDiskInventory =
       error: "agent_unavailable" | "timeout" | "invalid_response" | "access_denied" | "agent_failure";
     }>;
 
+export type ImageEntryKind = "file" | "directory" | "symlink" | "other";
+
+export type ImageEntry = Readonly<{
+  id: string;
+  name: string;
+  kind: ImageEntryKind;
+  sizeBytes: string;
+}>;
+
+export type ImageInspectionError =
+  | "agent_unavailable"
+  | "worker_busy"
+  | "worker_timeout"
+  | "invalid_response"
+  | "invalid_image"
+  | "unsupported_filesystem"
+  | "filesystem_needs_recovery"
+  | "path_unavailable"
+  | "file_too_large"
+  | "output_exists"
+  | "output_failed"
+  | "session_expired"
+  | "session_limit"
+  | "too_many_entries"
+  | "invalid_path";
+
+export type ImageOpenResult =
+  | Readonly<{ status: "opened"; sessionId: string; imageName: string; directoryId: string; entries: readonly ImageEntry[]; nextPageToken: string | null }>
+  | Readonly<{ status: "cancelled" }>
+  | Readonly<{ status: "error"; error: ImageInspectionError }>;
+
+export type ImageDirectoryResult =
+  | Readonly<{ status: "ok"; entries: readonly ImageEntry[]; nextPageToken: string | null }>
+  | Readonly<{ status: "error"; error: ImageInspectionError }>;
+
+export type ImageExportResult =
+  | Readonly<{ status: "exported"; bytes: string }>
+  | Readonly<{ status: "error"; error: ImageInspectionError }>;
 export type DisplayInfo = Readonly<{
   protocolVersion: 1;
   scaleFactor: number;
@@ -104,13 +151,20 @@ export type DisplayInfo = Readonly<{
   platform: "windows" | "other";
 }>;
 
-import type { BenchmarkAvailability } from "./benchmark";
+import type { BenchmarkAvailability, BenchmarkRunResult, BenchmarkStartRequest } from "./benchmark";
 
 export interface Partition11Bridge {
   getStatus(): Promise<AppStatus>;
   getDisplayInfo(): Promise<DisplayInfo>;
   getBenchmarkAvailability(): Promise<BenchmarkAvailability>;
+  startBenchmark(request: BenchmarkStartRequest): Promise<BenchmarkRunResult>;
+  cancelBenchmark(requestId: string): Promise<BenchmarkRunResult>;
   getReadOnlyDiskInventory(): Promise<ReadOnlyDiskInventory>;
+  openImage(): Promise<ImageOpenResult>;
+  listImageDirectory(sessionId: string, directoryId: string): Promise<ImageDirectoryResult>;
+  nextImagePage(sessionId: string, pageToken: string): Promise<ImageDirectoryResult>;
+  exportImageFile(sessionId: string, fileId: string): Promise<ImageExportResult>;
+  closeImageSession(sessionId: string): Promise<void>;
   setTitlebarTheme(theme: "light" | "dark"): Promise<void>;
   onDisplayChanged(listener: () => void): () => void;
 }

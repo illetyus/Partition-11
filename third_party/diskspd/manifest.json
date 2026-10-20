@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "Microsoft DiskSpd",
+  "upstreamRepository": "https://github.com/microsoft/diskspd",
+  "releaseTag": "v2.3",
+  "releaseCommitShort": "5e7025b",
+  "assetName": "DiskSpd.ZIP",
+  "assetUrl": "https://github.com/microsoft/diskspd/releases/download/v2.3/DiskSpd.ZIP",
+  "archiveSha256": "18609981e8b04b4f645f1fd182ad0541615fe71722de36a9a933c54f747218a3",
+  "binaryArchitecture": "amd64",
+  "executableSha256": "dd4e57e1e8ccaf5d6437938f8aab7f17e9a1e6d8fba8a093006b7cadf16faea2",
+  "xmlResultVersion": "2.3.0",
+  "license": "MIT",
+  "licenseFile": "third_party/diskspd/LICENSE",
+  "distributionStatus": "bundled-in-unsigned-preview"
+}

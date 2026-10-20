@@ -388,8 +388,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "enumerates this Windows host; not run by automated acceptance checks"]
     fn windows_setupapi_enumeration_is_bounded_and_non_mutating() {
-        // CI Windows Server VM check, NOT physical Windows 11 acceptance.
+        // Opt-in diagnostic only; do not run as user-device acceptance.
         // No disk handles are opened and no raw data is accessed.
         let devices = enumerate_disk_records().expect("SetupAPI disk interface enumeration");
         assert!(devices.len() <= MAX_DISK_INTERFACES as usize);
