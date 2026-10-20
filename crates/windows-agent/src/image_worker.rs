@@ -429,8 +429,8 @@ mod tests {
         let encoded = encoded_export_request(
             r"D:\images\fixture.img",
             b"/hello.txt",
-            r"D:\exports\hello.txt",
-            r"D:\exports\.p11-123.partial",
+            "D:/exports/hello.txt",
+            "D:/exports/.p11-123.partial",
         );
         let decoded = decode_request(&encoded).expect("valid export request");
         match decoded {
@@ -439,8 +439,8 @@ mod tests {
                 staging_path,
                 ..
             } => {
-                assert_eq!(destination_path, PathBuf::from(r"D:\exports\hello.txt"));
-                assert_eq!(staging_path, PathBuf::from(r"D:\exports\.p11-123.partial"));
+                assert_eq!(destination_path, PathBuf::from("D:/exports/hello.txt"));
+                assert_eq!(staging_path, PathBuf::from("D:/exports/.p11-123.partial"));
             }
             _ => panic!("wrong request kind"),
         }
@@ -448,16 +448,16 @@ mod tests {
         let different_directory = encoded_export_request(
             r"D:\images\fixture.img",
             b"/hello.txt",
-            r"D:\exports\hello.txt",
-            r"D:\temp\.p11-123.partial",
+            "D:/exports/hello.txt",
+            "D:/temp/.p11-123.partial",
         );
         assert!(decode_request(&different_directory).is_err());
 
         let same_path = encoded_export_request(
             r"D:\images\fixture.img",
             b"/hello.txt",
-            r"D:\exports\hello.txt",
-            r"D:\exports\hello.txt",
+            "D:/exports/hello.txt",
+            "D:/exports/hello.txt",
         );
         assert!(decode_request(&same_path).is_err());
     }
