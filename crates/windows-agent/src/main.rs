@@ -33,10 +33,8 @@ mod overlapped_ioctl;
 mod pnp_notifications;
 #[cfg(windows)]
 mod scan_identity;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 #[allow(unsafe_code)]
-mod storage_identity;
-#[cfg(not(windows))]
 mod storage_identity;
 #[cfg(windows)]
 mod volume_eligibility;
