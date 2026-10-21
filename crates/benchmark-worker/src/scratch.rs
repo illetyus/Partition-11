@@ -26,7 +26,13 @@ const OPEN_ALWAYS: u32 = 4;
 const FILE_ATTRIBUTE_NORMAL: u32 = 0x0000_0080;
 const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x0000_0010;
 const FILE_ATTRIBUTE_DEVICE: u32 = 0x0000_0040;
+const FILE_ATTRIBUTE_SPARSE_FILE: u32 = 0x0000_0200;
 const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+const FILE_ATTRIBUTE_COMPRESSED: u32 = 0x0000_0800;
+const FILE_ATTRIBUTE_OFFLINE: u32 = 0x0000_1000;
+const FILE_ATTRIBUTE_ENCRYPTED: u32 = 0x0000_4000;
+const FILE_ATTRIBUTE_RECALL_ON_OPEN: u32 = 0x0004_0000;
+const FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS: u32 = 0x0040_0000;
 const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 #[cfg(test)]
@@ -658,6 +664,87 @@ impl ScratchLease {
         Ok(())
     }
 
+    pub(crate) fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+
+    pub(crate) fn begin_initialization(&mut self) -> io::Result<()> {
+        self.verify()?;
+        let file = self
+            .file
+            .as_ref()
+            .ok_or_else(|| invalid_data("scratch file handle is closed"))?;
+        if unsafe { SetFilePointerEx(file.raw(), 0, null_mut(), FILE_BEGIN) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn fill_initialization_buffer(buffer: &mut [u8]) -> io::Result<()> {
+        if buffer.is_empty() || buffer.len() > u32::MAX as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "scratch initialization buffer size is invalid",
+            ));
+        }
+        let status = unsafe {
+            BCryptGenRandom(
+                null_mut(),
+                buffer.as_mut_ptr(),
+                buffer.len() as u32,
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+            )
+        };
+        if status < 0 {
+            return Err(io::Error::from_raw_os_error(status));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn write_initialization_chunk(&mut self, buffer: &[u8]) -> io::Result<()> {
+        if buffer.is_empty() || buffer.len() > u32::MAX as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "scratch initialization chunk size is invalid",
+            ));
+        }
+        let file = self
+            .file
+            .as_ref()
+            .ok_or_else(|| invalid_data("scratch file handle is closed"))?;
+        let mut written = 0_u32;
+        if unsafe {
+            WriteFile(
+                file.raw(),
+                buffer.as_ptr() as *const c_void,
+                buffer.len() as u32,
+                &mut written,
+                null_mut(),
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        if written as usize != buffer.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "scratch initialization write was incomplete",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish_initialization(&mut self) -> io::Result<()> {
+        let file = self
+            .file
+            .as_ref()
+            .ok_or_else(|| invalid_data("scratch file handle is closed"))?;
+        if unsafe { FlushFileBuffers(file.raw()) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        self.verify()
+    }
+
     /// Durably records that this lease may now be passed to the contained benchmark worker.
     ///
     /// Test-only leases have no journal and remain usable for isolated file-contract tests.
@@ -1130,7 +1217,15 @@ fn validate_directory(handle: RawHandle, expected: &ObjectIdentity) -> io::Resul
 
 fn validate_owned_file_metadata(attributes: u32, standard: &FileStandardInfo) -> io::Result<()> {
     if attributes
-        & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_DEVICE)
+        & (FILE_ATTRIBUTE_REPARSE_POINT
+            | FILE_ATTRIBUTE_DIRECTORY
+            | FILE_ATTRIBUTE_DEVICE
+            | FILE_ATTRIBUTE_SPARSE_FILE
+            | FILE_ATTRIBUTE_COMPRESSED
+            | FILE_ATTRIBUTE_OFFLINE
+            | FILE_ATTRIBUTE_ENCRYPTED
+            | FILE_ATTRIBUTE_RECALL_ON_OPEN
+            | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)
         != 0
         || standard.directory != 0
         || standard.delete_pending != 0
@@ -1553,6 +1648,31 @@ mod tests {
             result,
             Err(error) if error.kind() == io::ErrorKind::InvalidData
         ));
+    }
+
+    #[test]
+    fn rejects_sparse_compressed_encrypted_and_recall_scratch_files() {
+        let standard = super::FileStandardInfo {
+            allocation_size: 4 * 1024 * 1024,
+            end_of_file: 4 * 1024 * 1024,
+            number_of_links: 1,
+            delete_pending: 0,
+            directory: 0,
+        };
+        for attribute in [
+            0x0000_0200, // sparse
+            0x0000_0800, // compressed
+            0x0000_1000, // offline
+            0x0000_4000, // encrypted
+            0x0004_0000, // recall on open
+            0x0040_0000, // recall on data access
+        ] {
+            let result = super::validate_owned_file_metadata(attribute, &standard);
+            assert!(
+                matches!(result, Err(error) if error.kind() == io::ErrorKind::InvalidData),
+                "unsupported file attribute {attribute:#x} must be rejected"
+            );
+        }
     }
     #[test]
     fn rejects_junction_roots_before_creating_payloads() -> io::Result<()> {

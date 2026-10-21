@@ -1,6 +1,10 @@
-use crate::job_process::{ProcessError, ProcessOutput};
+use crate::diskspd::{build_diskspd_args, DiskSpdDirection, DiskSpdProfile, VerifiedDiskSpd};
+use crate::job_process::{run_process, ProcessCommand, ProcessError, ProcessLimits, ProcessOutput};
+use crate::preparation::{prepare_scratch, MAX_PREPARATION_TIME};
 use crate::ScratchLease;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BenchmarkExecutionError {
@@ -71,6 +75,78 @@ pub(crate) fn execute_lease(
     }
 }
 
+/// Initializes and benchmarks one exclusively owned scratch file using only
+/// the pinned engine and fixed workload policy.
+pub fn run_file_benchmark(
+    root: &Path,
+    engine: &VerifiedDiskSpd,
+    profile: DiskSpdProfile,
+    direction: DiskSpdDirection,
+    cancel: &AtomicBool,
+) -> Result<CompletedBenchmark, BenchmarkExecutionError> {
+    if cancel.load(Ordering::Acquire) {
+        return Err(BenchmarkExecutionError::Cancelled);
+    }
+    let mut lease = ScratchLease::create(root, 1024 * 1024 * 1024)
+        .map_err(|_| BenchmarkExecutionError::WorkerFailure)?;
+    let args = match build_diskspd_args(&lease, profile, direction, 5, 15) {
+        Ok(args) => args,
+        Err(_) => {
+            return Err(if lease.cleanup().is_ok() {
+                BenchmarkExecutionError::WorkerFailure
+            } else {
+                BenchmarkExecutionError::CleanupRequired
+            });
+        }
+    };
+    let command = match ProcessCommand::verified_diskspd(engine, args) {
+        Ok(command) => command,
+        Err(_) => {
+            return Err(if lease.cleanup().is_ok() {
+                BenchmarkExecutionError::WorkerFailure
+            } else {
+                BenchmarkExecutionError::CleanupRequired
+            });
+        }
+    };
+    let limits = match ProcessLimits::from_workload(5, 15) {
+        Ok(limits) => limits,
+        Err(_) => {
+            return Err(if lease.cleanup().is_ok() {
+                BenchmarkExecutionError::WorkerFailure
+            } else {
+                BenchmarkExecutionError::CleanupRequired
+            });
+        }
+    };
+
+    if let Err(error) = prepare_scratch(&mut lease, cancel, Instant::now() + MAX_PREPARATION_TIME) {
+        let was_cancelled = error.kind() == std::io::ErrorKind::Interrupted;
+        return Err(if lease.cleanup().is_ok() {
+            if was_cancelled {
+                BenchmarkExecutionError::Cancelled
+            } else {
+                BenchmarkExecutionError::WorkerFailure
+            }
+        } else {
+            BenchmarkExecutionError::CleanupRequired
+        });
+    }
+    if cancel.load(Ordering::Acquire) {
+        return Err(if lease.cleanup().is_ok() {
+            BenchmarkExecutionError::Cancelled
+        } else {
+            BenchmarkExecutionError::CleanupRequired
+        });
+    }
+
+    let result = execute_lease(lease, |_| run_process(command, limits, cancel));
+    if cancel.load(Ordering::Acquire) {
+        return Err(BenchmarkExecutionError::Cancelled);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,6 +209,74 @@ mod tests {
         .unwrap();
         assert_eq!(result.target_path, target);
         assert!(result.xml.contains("harmless-fixture"));
+        assert!(!target.exists());
+        assert_eq!(
+            crate::scratch::recover_test_journal(&journal),
+            crate::ScratchRecoveryStatus::Clean
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn prepared_lease_is_flushed_before_child_launch_and_cleaned_after_drain() {
+        let (root, journal, mut lease) = fixture();
+        let target = lease.file_path().to_path_buf();
+        let size = lease.size_bytes();
+        crate::preparation::prepare_scratch_with_size(
+            &mut lease,
+            &AtomicBool::new(false),
+            std::time::Instant::now() + std::time::Duration::from_secs(5),
+            size,
+        )
+        .unwrap();
+
+        let prepared_record = std::fs::read_dir(&journal)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .unwrap();
+        assert!(std::fs::read_to_string(prepared_record)
+            .unwrap()
+            .ends_with("state=ready\n"));
+        let mut prepared = std::fs::File::open(&target).unwrap();
+        assert_eq!(prepared.metadata().unwrap().len(), size);
+        let mut sample = [0_u8; 4096];
+        std::io::Read::read_exact(&mut prepared, &mut sample).unwrap();
+        assert!(sample.iter().any(|byte| *byte != 0));
+        drop(prepared);
+
+        let result = execute_lease(lease, |lease| {
+            let running_record = std::fs::read_dir(&journal)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .find(|path| path.extension().is_some_and(|ext| ext == "json"))
+                .unwrap();
+            assert!(std::fs::read_to_string(running_record)
+                .unwrap()
+                .ends_with("state=running\n"));
+            assert_eq!(std::fs::metadata(lease.file_path()).unwrap().len(), size);
+
+            let executable = std::env::var_os("ComSpec")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(r"C:\Windows\System32\cmd.exe"));
+            let command = ProcessCommand::test_fixture(
+                executable,
+                vec![
+                    OsString::from("/d"),
+                    OsString::from("/c"),
+                    OsString::from("echo prepared-fixture"),
+                ],
+            )
+            .unwrap();
+            run_process(
+                command,
+                ProcessLimits::from_workload(0, 2).unwrap(),
+                &AtomicBool::new(false),
+            )
+        })
+        .unwrap();
+        assert_eq!(result.target_path, target);
+        assert!(result.xml.contains("prepared-fixture"));
         assert!(!target.exists());
         assert_eq!(
             crate::scratch::recover_test_journal(&journal),

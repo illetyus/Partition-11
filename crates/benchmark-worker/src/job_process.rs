@@ -265,6 +265,17 @@ pub(crate) struct ProcessCommand {
 }
 
 impl ProcessCommand {
+    pub(crate) fn verified_diskspd(
+        engine: &crate::diskspd::VerifiedDiskSpd,
+        args: Vec<OsString>,
+    ) -> Result<Self, ProcessError> {
+        validate_command(engine.path(), &args)?;
+        Ok(Self {
+            executable: engine.path().to_path_buf(),
+            args,
+        })
+    }
+
     #[cfg(test)]
     pub(crate) fn test_fixture(
         executable: PathBuf,

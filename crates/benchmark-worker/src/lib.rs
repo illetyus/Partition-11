@@ -1,11 +1,15 @@
 //! Internal P2.5 file-target safety primitives.
 //!
-//! This crate is not packaged or connected to the Electron IPC. It does not
-//! access raw disks, request elevation, or launch DiskSpd.
+//! This crate owns contained file-backed benchmark execution. It does not
+//! access raw disks or request elevation; renderer and IPC integration lives
+//! in the Windows agent and Electron main process.
 #![deny(unsafe_code)]
 
 #[cfg(windows)]
 mod execution;
+
+#[cfg(windows)]
+mod preparation;
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
@@ -21,7 +25,7 @@ pub use diskspd::{
     build_diskspd_args, DiskSpdDirection, DiskSpdProfile, PolicyError, VerifiedDiskSpd,
 };
 #[cfg(windows)]
-pub use execution::{BenchmarkExecutionError, CompletedBenchmark};
+pub use execution::{run_file_benchmark, BenchmarkExecutionError, CompletedBenchmark};
 #[cfg(windows)]
 pub use scratch::ScratchLease;
 
