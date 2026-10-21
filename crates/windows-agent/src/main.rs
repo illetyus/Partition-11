@@ -7,8 +7,9 @@
 // Win32 FFI has its own reviewed and bounded safety boundary. Do not add
 // unsafe code elsewhere in the agent or expose raw paths to the renderer.
 #[cfg(windows)]
-#[allow(dead_code)] // Not dispatched until the approved file-lease compatibility gate passes.
 mod benchmark_protocol;
+#[cfg(windows)]
+mod benchmark_run;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod disk_discovery;
@@ -163,6 +164,27 @@ fn main() {
             }
         }
         #[cfg(windows)]
+        (Some("benchmark-recovery"), None) => {
+            let status = partition11_benchmark_worker::recover_scratch_leases();
+            let status = match status {
+                partition11_benchmark_worker::ScratchRecoveryStatus::Clean => "clean",
+                partition11_benchmark_worker::ScratchRecoveryStatus::CleanupRequired => {
+                    "cleanup_required"
+                }
+                partition11_benchmark_worker::ScratchRecoveryStatus::Deferred => "deferred",
+            };
+            println!("{{\"protocol_version\":1,\"status\":\"{status}\"}}");
+        }
+        #[cfg(windows)]
+        (Some("benchmark-run"), None) => {
+            use std::io;
+            let status =
+                benchmark_run::run(io::BufReader::new(io::stdin()), &mut io::stdout().lock());
+            if status != 0 {
+                std::process::exit(status);
+            }
+        }
+        #[cfg(windows)]
         (Some("inventory"), None) => {
             use std::io::{self, Write};
             let _hard_deadline = spawn_hard_deadline(INVENTORY_HARD_DEADLINE, || {
@@ -200,7 +222,7 @@ fn main() {
             let _ = io::stdout().flush();
         }
         _ => {
-            eprintln!("Partition 11 agent: bounded diagnostics and one-shot read-only inventory only. No disk writes exist.");
+            eprintln!("Partition 11 agent: bounded diagnostics and consent-gated file benchmarking only. Raw-disk and destructive writes are unavailable.");
             std::process::exit(2);
         }
     }

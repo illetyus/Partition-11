@@ -5,9 +5,13 @@ use crate::storage_identity::hmac_sha256;
 use crate::storage_identity::StorageIdentity;
 use crate::volume_eligibility::{DriveType, EligibilityReason};
 use crate::volume_inventory::VolumeRecord;
-use std::io::{Read, Write};
+#[cfg(test)]
+use std::io::Read;
+use std::io::{BufRead, Write};
 
 pub(crate) const MAX_REQUEST_BYTES: usize = 2 * 1024;
+const MAX_FINAL_XML_BYTES: usize = 1024 * 1024;
+const MAX_FINAL_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 const PROTOCOL_VERSION: u64 = 1;
 const OPERATION: &str = "runFileBenchmark";
 const MAX_VOLUME_ORDINAL: u32 = 256;
@@ -82,7 +86,7 @@ pub(crate) struct BenchmarkRequest {
 }
 
 impl BenchmarkRequest {
-    fn authorization_message(&self) -> Vec<u8> {
+    pub(crate) fn authorization_message(&self) -> Vec<u8> {
         let mut message = b"Partition11 benchmark authorization v1\0".to_vec();
         message.extend_from_slice(&(self.request_id.len() as u16).to_le_bytes());
         message.extend_from_slice(self.request_id.as_bytes());
@@ -216,6 +220,25 @@ pub(crate) fn revalidate_target(
 pub(crate) enum RequestError {
     Oversize,
     Malformed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FinalError {
+    InvalidRequest,
+    StaleSelection,
+    WorkerFailure,
+    CleanupRequired,
+}
+
+impl FinalError {
+    fn code(self) -> &'static str {
+        match self {
+            Self::InvalidRequest => "invalid_request",
+            Self::StaleSelection => "stale_selection",
+            Self::WorkerFailure => "worker_failure",
+            Self::CleanupRequired => "cleanup_required",
+        }
+    }
 }
 
 struct Parser<'a> {
@@ -409,7 +432,8 @@ pub(crate) fn parse_request(bytes: &[u8]) -> Result<BenchmarkRequest, RequestErr
     })
 }
 
-pub(crate) fn read_request(reader: &mut impl Read) -> Result<BenchmarkRequest, RequestError> {
+#[cfg(test)]
+fn read_request(reader: &mut impl Read) -> Result<BenchmarkRequest, RequestError> {
     let mut bytes = Vec::new();
     reader
         .take((MAX_REQUEST_BYTES + 1) as u64)
@@ -421,10 +445,117 @@ pub(crate) fn read_request(reader: &mut impl Read) -> Result<BenchmarkRequest, R
     parse_request(&bytes)
 }
 
+/// Reads exactly one newline-terminated request without waiting for the parent
+/// to close stdin. Bytes after the first newline remain available as control
+/// frames for the duration of the operation.
+pub(crate) fn read_request_frame(
+    reader: &mut impl BufRead,
+) -> Result<BenchmarkRequest, RequestError> {
+    let mut bytes = Vec::with_capacity(MAX_REQUEST_BYTES.min(512));
+    loop {
+        let available = reader.fill_buf().map_err(|_| RequestError::Malformed)?;
+        if available.is_empty() {
+            return Err(RequestError::Malformed);
+        }
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let frame_bytes = newline.unwrap_or(available.len());
+        if bytes.len().saturating_add(frame_bytes) > MAX_REQUEST_BYTES {
+            return Err(RequestError::Oversize);
+        }
+        bytes.extend_from_slice(&available[..frame_bytes]);
+        let consumed = newline.map_or(available.len(), |index| index + 1);
+        reader.consume(consumed);
+        if newline.is_some() {
+            return parse_request(&bytes);
+        }
+    }
+}
+
 pub(crate) fn write_response(writer: &mut impl Write, bytes: &[u8]) -> std::io::Result<()> {
     writer.write_all(bytes)?;
     writer.write_all(b"\n")?;
     writer.flush()
+}
+
+pub(crate) fn encode_completed_response(
+    request_id: &str,
+    target_path: &str,
+    file_system: &str,
+    xml: &str,
+) -> Result<Vec<u8>, RequestError> {
+    if !valid_request_id(request_id) || target_path.len() > 32 * 1024 || file_system != "NTFS" {
+        return Err(RequestError::Malformed);
+    }
+    if xml.len() > MAX_FINAL_XML_BYTES {
+        return Err(RequestError::Oversize);
+    }
+    let mut output = String::with_capacity(xml.len().min(MAX_FINAL_RESPONSE_BYTES));
+    output.push_str("{\"protocolVersion\":1,\"requestId\":");
+    push_json_string(&mut output, request_id);
+    output.push_str(",\"status\":\"completed\",\"ownedTargetPath\":");
+    push_json_string(&mut output, target_path);
+    output.push_str(",\"filesystem\":\"NTFS\",\"xml\":");
+    push_json_string(&mut output, xml);
+    output.push('}');
+    if output.len() > MAX_FINAL_RESPONSE_BYTES {
+        return Err(RequestError::Oversize);
+    }
+    Ok(output.into_bytes())
+}
+
+pub(crate) fn encode_cancelled_response(request_id: &str) -> Result<Vec<u8>, RequestError> {
+    encode_terminal_response(request_id, None)
+}
+
+pub(crate) fn encode_error_response(
+    request_id: &str,
+    error: FinalError,
+) -> Result<Vec<u8>, RequestError> {
+    encode_terminal_response(request_id, Some(error))
+}
+
+fn encode_terminal_response(
+    request_id: &str,
+    error: Option<FinalError>,
+) -> Result<Vec<u8>, RequestError> {
+    if !valid_request_id(request_id) {
+        return Err(RequestError::Malformed);
+    }
+    let mut output = String::with_capacity(128);
+    output.push_str("{\"protocolVersion\":1,\"requestId\":");
+    push_json_string(&mut output, request_id);
+    match error {
+        Some(error) => {
+            output.push_str(",\"status\":\"error\",\"error\":");
+            push_json_string(&mut output, error.code());
+        }
+        None => output.push_str(",\"status\":\"cancelled\""),
+    }
+    output.push('}');
+    Ok(output.into_bytes())
+}
+
+fn push_json_string(output: &mut String, value: &str) {
+    use std::fmt::Write as _;
+
+    output.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            '\u{08}' => output.push_str("\\b"),
+            '\u{0c}' => output.push_str("\\f"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            character if character <= '\u{1f}' => {
+                write!(output, "\\u{:04x}", character as u32)
+                    .expect("writing a JSON escape to String cannot fail");
+            }
+            character => output.push(character),
+        }
+    }
+    output.push('"');
 }
 
 fn constant_time_eq(left: &[u8; 32], right: &[u8; 32]) -> bool {
@@ -599,6 +730,74 @@ mod tests {
         let mut output = Vec::new();
         write_response(&mut output, b"{} ").unwrap();
         assert_eq!(output, b"{} \n");
+    }
+
+    #[test]
+    fn reads_one_bounded_newline_request_without_waiting_for_eof_or_consuming_cancel() {
+        use std::io::BufRead as _;
+
+        let mut bytes = request_bytes("");
+        bytes.push(b'\n');
+        bytes.extend_from_slice(b"cancel\n");
+        let mut input = std::io::BufReader::new(std::io::Cursor::new(bytes));
+
+        let request = read_request_frame(&mut input).unwrap();
+        assert_eq!(request.request_id, "8c6f35f8-260e-4fbd-9e4d-c91b78562f58");
+        assert_eq!(input.fill_buf().unwrap(), b"cancel\n");
+    }
+
+    #[test]
+    fn newline_request_frame_is_bounded_even_when_the_stream_stays_open() {
+        let mut bytes = vec![b' '; MAX_REQUEST_BYTES + 1];
+        bytes.push(b'\n');
+        let mut input = std::io::BufReader::new(std::io::Cursor::new(bytes));
+        assert_eq!(read_request_frame(&mut input), Err(RequestError::Oversize));
+    }
+
+    #[test]
+    fn final_responses_have_exact_fields_and_escape_only_bounded_values() {
+        let completed = encode_completed_response(
+            "8c6f35f8-260e-4fbd-9e4d-c91b78562f58",
+            "\\\\?\\Volume{12345678-1234-1234-1234-123456789abc}\\.partition11-scratch-a.bin",
+            "NTFS",
+            "<Results note=\"safe\">\n</Results>",
+        )
+        .unwrap();
+        assert_eq!(
+            std::str::from_utf8(&completed).unwrap(),
+            "{\"protocolVersion\":1,\"requestId\":\"8c6f35f8-260e-4fbd-9e4d-c91b78562f58\",\"status\":\"completed\",\"ownedTargetPath\":\"\\\\\\\\?\\\\Volume{12345678-1234-1234-1234-123456789abc}\\\\.partition11-scratch-a.bin\",\"filesystem\":\"NTFS\",\"xml\":\"<Results note=\\\"safe\\\">\\n</Results>\"}"
+        );
+        assert_eq!(
+            std::str::from_utf8(
+                &encode_error_response(
+                    "8c6f35f8-260e-4fbd-9e4d-c91b78562f58",
+                    FinalError::StaleSelection,
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            "{\"protocolVersion\":1,\"requestId\":\"8c6f35f8-260e-4fbd-9e4d-c91b78562f58\",\"status\":\"error\",\"error\":\"stale_selection\"}"
+        );
+        assert_eq!(
+            std::str::from_utf8(
+                &encode_cancelled_response("8c6f35f8-260e-4fbd-9e4d-c91b78562f58").unwrap()
+            )
+            .unwrap(),
+            "{\"protocolVersion\":1,\"requestId\":\"8c6f35f8-260e-4fbd-9e4d-c91b78562f58\",\"status\":\"cancelled\"}"
+        );
+        assert_eq!(
+            encode_completed_response("bad", "path", "NTFS", "xml"),
+            Err(RequestError::Malformed)
+        );
+        assert_eq!(
+            encode_completed_response(
+                "8c6f35f8-260e-4fbd-9e4d-c91b78562f58",
+                "\\\\?\\Volume{12345678-1234-1234-1234-123456789abc}\\scratch.bin",
+                "NTFS",
+                &"x".repeat(MAX_FINAL_XML_BYTES + 1),
+            ),
+            Err(RequestError::Oversize)
+        );
     }
 
     #[test]
