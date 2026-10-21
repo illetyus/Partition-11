@@ -21,7 +21,7 @@
 
 ## Task status
 - Task 0: complete — exact RED recorded above.
-- Task 1: implementation complete; Gate A CI pending — execution lifecycle, test-only journal policy, replacement/wrong-size/hard-link recovery tests and pinned CI workflow are implemented locally. Windows worker suite: 49 passed, 3 intentionally ignored. Strict targeted Clippy (`-D warnings`) and `cargo fmt --all -- --check` pass. Sandboxed ACL attempt failed before fixture setup with ERROR_ACCESS_DENIED; the same suite passed outside the AppContainer without changing ACL policy. The pinned DiskSpd compatibility workflow has not run on this commit yet.
+- Task 1: implementation complete; Gate A CI pending — execution lifecycle, test-only journal policy, replacement/wrong-size/hard-link recovery tests and pinned CI workflow are implemented locally. Windows worker suite: 49 passed, 3 intentionally ignored. Strict targeted Clippy (`-D warnings`) and `cargo fmt --all -- --check` pass. First fresh GitHub run (39538874608) exposed hosted-runner file ownership defaulting to Administrators; the implementation now writes the current-user owner SID explicitly in the protected descriptor. The full local Windows worker suite passes with that fix. Sandboxed ACL attempt failed before fixture setup with ERROR_ACCESS_DENIED; native tests pass outside the AppContainer without weakening ACL policy. Re-run Gate A is pending.
 - Task 2: pending.
 - Task 3: pending.
 - Task 4: pending.

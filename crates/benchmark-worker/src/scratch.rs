@@ -264,7 +264,7 @@ fn current_user_sid_string() -> io::Result<String> {
 fn protected_user_system_security_attributes() -> io::Result<(LocalAllocation, SecurityAttributes)>
 {
     let user_sid = current_user_sid_string()?;
-    let sddl = format!("D:P(A;;FA;;;SY)(A;;FA;;;{user_sid})");
+    let sddl = format!("O:{user_sid}D:P(A;;FA;;;SY)(A;;FA;;;{user_sid})");
     let sddl = wide_string(&sddl);
     let mut descriptor = null_mut();
     if unsafe {
