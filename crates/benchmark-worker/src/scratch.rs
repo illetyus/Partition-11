@@ -4,6 +4,9 @@ use std::mem::{size_of, zeroed};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Component, Path, PathBuf};
 use std::ptr::{null, null_mut};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+mod journal;
 
 const MIN_SIZE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_SIZE_BYTES: u64 = 1024 * 1024 * 1024;
@@ -16,8 +19,10 @@ const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
 const DELETE: u32 = 0x0001_0000;
 const FILE_READ_ATTRIBUTES: u32 = 0x0000_0080;
+const READ_CONTROL: u32 = 0x0002_0000;
 const CREATE_NEW: u32 = 1;
 const OPEN_EXISTING: u32 = 3;
+const OPEN_ALWAYS: u32 = 4;
 const FILE_ATTRIBUTE_NORMAL: u32 = 0x0000_0080;
 const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x0000_0010;
 const FILE_ATTRIBUTE_DEVICE: u32 = 0x0000_0040;
@@ -36,6 +41,18 @@ const VOLUME_NAME_GUID: u32 = 1;
 const ERROR_ALREADY_EXISTS: i32 = 183;
 const ERROR_FILE_EXISTS: i32 = 80;
 const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+const TOKEN_QUERY: u32 = 0x0000_0008;
+const TOKEN_USER_CLASS: u32 = 1;
+const SE_FILE_OBJECT: u32 = 1;
+const OWNER_SECURITY_INFORMATION: u32 = 0x0000_0001;
+const DACL_SECURITY_INFORMATION: u32 = 0x0000_0004;
+const SE_DACL_PROTECTED: u16 = 0x1000;
+const ACL_SIZE_INFORMATION_CLASS: u32 = 2;
+const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
+const MOVEFILE_REPLACE_EXISTING: u32 = 0x0000_0001;
+const MOVEFILE_WRITE_THROUGH: u32 = 0x0000_0008;
+const SDDL_REVISION_1: u32 = 1;
 const MAX_FINAL_PATH_CHARS: usize = 32_767;
 const SCRATCH_FILE_PREFIX: &str = ".partition11-scratch-";
 
@@ -45,6 +62,8 @@ const INVALID_HANDLE_VALUE: RawHandle = -1isize as RawHandle;
 #[link(name = "Kernel32")]
 extern "system" {
     fn CloseHandle(handle: RawHandle) -> i32;
+    fn GetCurrentProcess() -> RawHandle;
+    fn LocalFree(memory: RawHandle) -> RawHandle;
     fn CreateFileW(
         path: *const u16,
         desired_access: u32,
@@ -54,6 +73,7 @@ extern "system" {
         flags_and_attributes: u32,
         template_file: RawHandle,
     ) -> RawHandle;
+    fn CreateDirectoryW(path: *const u16, security_attributes: *const c_void) -> i32;
     fn FlushFileBuffers(handle: RawHandle) -> i32;
     fn GetFileInformationByHandleEx(
         handle: RawHandle,
@@ -80,6 +100,325 @@ extern "system" {
         new_file_pointer: *mut i64,
         move_method: u32,
     ) -> i32;
+    fn ReadFile(
+        handle: RawHandle,
+        buffer: *mut c_void,
+        bytes_to_read: u32,
+        bytes_read: *mut u32,
+        overlapped: *mut c_void,
+    ) -> i32;
+    fn WriteFile(
+        handle: RawHandle,
+        buffer: *const c_void,
+        bytes_to_write: u32,
+        bytes_written: *mut u32,
+        overlapped: *mut c_void,
+    ) -> i32;
+    fn MoveFileExW(existing_path: *const u16, new_path: *const u16, flags: u32) -> i32;
+}
+
+#[link(name = "advapi32")]
+extern "system" {
+    fn OpenProcessToken(process: RawHandle, desired_access: u32, token: *mut RawHandle) -> i32;
+    fn GetTokenInformation(
+        token: RawHandle,
+        information_class: u32,
+        information: *mut c_void,
+        information_length: u32,
+        return_length: *mut u32,
+    ) -> i32;
+    fn ConvertSidToStringSidW(sid: RawHandle, string_sid: *mut *mut u16) -> i32;
+    fn ConvertStringSidToSidW(string_sid: *const u16, sid: *mut RawHandle) -> i32;
+    fn ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        string_security_descriptor: *const u16,
+        revision: u32,
+        security_descriptor: *mut RawHandle,
+        security_descriptor_size: *mut u32,
+    ) -> i32;
+    fn GetSecurityInfo(
+        handle: RawHandle,
+        object_type: u32,
+        security_info: u32,
+        owner: *mut RawHandle,
+        group: *mut RawHandle,
+        dacl: *mut RawHandle,
+        sacl: *mut RawHandle,
+        security_descriptor: *mut RawHandle,
+    ) -> u32;
+    fn GetSecurityDescriptorDacl(
+        security_descriptor: RawHandle,
+        dacl_present: *mut i32,
+        dacl: *mut RawHandle,
+        dacl_defaulted: *mut i32,
+    ) -> i32;
+    fn GetSecurityDescriptorControl(
+        security_descriptor: RawHandle,
+        control: *mut u16,
+        revision: *mut u32,
+    ) -> i32;
+    fn GetAclInformation(
+        acl: RawHandle,
+        information: *mut c_void,
+        information_length: u32,
+        information_class: u32,
+    ) -> i32;
+    fn GetAce(acl: RawHandle, ace_index: u32, ace: *mut RawHandle) -> i32;
+    fn IsValidSid(sid: RawHandle) -> i32;
+    fn GetLengthSid(sid: RawHandle) -> u32;
+    fn EqualSid(left: RawHandle, right: RawHandle) -> i32;
+}
+
+#[repr(C)]
+struct SecurityAttributes {
+    length: u32,
+    security_descriptor: RawHandle,
+    inherit_handle: i32,
+}
+
+#[repr(C)]
+struct SidAndAttributes {
+    sid: RawHandle,
+    attributes: u32,
+}
+
+#[repr(C)]
+struct TokenUser {
+    user: SidAndAttributes,
+}
+
+#[repr(C)]
+struct AclSizeInformation {
+    ace_count: u32,
+    acl_bytes_in_use: u32,
+    acl_bytes_free: u32,
+}
+
+#[repr(C)]
+struct AceHeader {
+    ace_type: u8,
+    ace_flags: u8,
+    ace_size: u16,
+}
+
+struct LocalAllocation(RawHandle);
+
+impl Drop for LocalAllocation {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                LocalFree(self.0);
+            }
+        }
+    }
+}
+
+fn wide_string(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn current_user_sid_string() -> io::Result<String> {
+    let mut token = null_mut();
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let token = Handle::from_raw(token)?;
+    let mut required = 0u32;
+    unsafe {
+        GetTokenInformation(token.raw(), TOKEN_USER_CLASS, null_mut(), 0, &mut required);
+    }
+    if required < size_of::<TokenUser>() as u32 {
+        return Err(io::Error::last_os_error());
+    }
+    let word_size = size_of::<usize>();
+    let mut buffer = vec![0usize; (required as usize).div_ceil(word_size)];
+    if unsafe {
+        GetTokenInformation(
+            token.raw(),
+            TOKEN_USER_CLASS,
+            buffer.as_mut_ptr() as *mut c_void,
+            required,
+            &mut required,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let token_user = unsafe { &*(buffer.as_ptr() as *const TokenUser) };
+    if unsafe { IsValidSid(token_user.user.sid) } == 0 {
+        return Err(invalid_data("current Windows user SID is invalid"));
+    }
+    let mut string_sid = null_mut();
+    if unsafe { ConvertSidToStringSidW(token_user.user.sid, &mut string_sid) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let string_sid = LocalAllocation(string_sid as RawHandle);
+    let mut length = 0usize;
+    while unsafe { *(string_sid.0 as *const u16).add(length) } != 0 {
+        length += 1;
+    }
+    Ok(String::from_utf16_lossy(unsafe {
+        std::slice::from_raw_parts(string_sid.0 as *const u16, length)
+    }))
+}
+
+fn protected_user_system_security_attributes() -> io::Result<(LocalAllocation, SecurityAttributes)>
+{
+    let user_sid = current_user_sid_string()?;
+    let sddl = format!("D:P(A;;FA;;;SY)(A;;FA;;;{user_sid})");
+    let sddl = wide_string(&sddl);
+    let mut descriptor = null_mut();
+    if unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl.as_ptr(),
+            SDDL_REVISION_1,
+            &mut descriptor,
+            null_mut(),
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let descriptor = LocalAllocation(descriptor);
+    let attributes = SecurityAttributes {
+        length: size_of::<SecurityAttributes>() as u32,
+        security_descriptor: descriptor.0,
+        inherit_handle: 0,
+    };
+    Ok((descriptor, attributes))
+}
+
+fn sid_from_string(value: &str) -> io::Result<LocalAllocation> {
+    let value = wide_string(value);
+    let mut sid = null_mut();
+    if unsafe { ConvertStringSidToSidW(value.as_ptr(), &mut sid) } == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(LocalAllocation(sid))
+    }
+}
+
+fn validate_restricted_file_dacl(handle: RawHandle) -> io::Result<()> {
+    let user_sid_text = current_user_sid_string()?;
+    let user_sid = sid_from_string(&user_sid_text)?;
+    let system_sid = sid_from_string("S-1-5-18")?;
+    let mut owner = null_mut();
+    let mut dacl = null_mut();
+    let mut descriptor = null_mut();
+    let status = unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            &mut owner,
+            null_mut(),
+            &mut dacl,
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if status != 0 {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+    let descriptor = LocalAllocation(descriptor);
+    if owner.is_null()
+        || unsafe { IsValidSid(owner) } == 0
+        || unsafe { EqualSid(owner, user_sid.0) } == 0
+    {
+        return Err(invalid_data("scratch owner is not the current user"));
+    }
+
+    let mut control = 0u16;
+    let mut revision = 0u32;
+    if unsafe { GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if control & SE_DACL_PROTECTED == 0 {
+        return Err(invalid_data("scratch DACL allows inherited access"));
+    }
+    let mut dacl_present = 0;
+    let mut dacl_defaulted = 0;
+    if unsafe {
+        GetSecurityDescriptorDacl(
+            descriptor.0,
+            &mut dacl_present,
+            &mut dacl,
+            &mut dacl_defaulted,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    if dacl_present == 0 || dacl.is_null() {
+        return Err(invalid_data("scratch file has no explicit DACL"));
+    }
+    let mut acl_information = AclSizeInformation {
+        ace_count: 0,
+        acl_bytes_in_use: 0,
+        acl_bytes_free: 0,
+    };
+    if unsafe {
+        GetAclInformation(
+            dacl,
+            &mut acl_information as *mut AclSizeInformation as *mut c_void,
+            size_of::<AclSizeInformation>() as u32,
+            ACL_SIZE_INFORMATION_CLASS,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    if acl_information.ace_count != 2 {
+        return Err(invalid_data(
+            "scratch DACL must contain exactly two entries",
+        ));
+    }
+    let mut has_user = false;
+    let mut has_system = false;
+    for index in 0..acl_information.ace_count {
+        let mut ace = null_mut();
+        if unsafe { GetAce(dacl, index, &mut ace) } == 0 || ace.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let header = unsafe { &*(ace as *const AceHeader) };
+        if header.ace_type != ACCESS_ALLOWED_ACE_TYPE
+            || header.ace_flags != 0
+            || (header.ace_size as usize) < size_of::<AceHeader>() + size_of::<u32>() + 8
+        {
+            return Err(invalid_data("scratch DACL contains an unexpected ACE"));
+        }
+        let mask = unsafe { *((ace as *const u8).add(size_of::<AceHeader>()) as *const u32) };
+        let sid = unsafe {
+            (ace as *const u8).add(size_of::<AceHeader>() + size_of::<u32>()) as RawHandle
+        };
+        let sid_length = unsafe { GetLengthSid(sid) } as usize;
+        if mask != FILE_ALL_ACCESS
+            || unsafe { IsValidSid(sid) } == 0
+            || sid_length > header.ace_size as usize - size_of::<AceHeader>() - size_of::<u32>()
+        {
+            return Err(invalid_data("scratch DACL contains an invalid access rule"));
+        }
+        if unsafe { EqualSid(sid, user_sid.0) } != 0 {
+            if has_user {
+                return Err(invalid_data("scratch DACL duplicates the user entry"));
+            }
+            has_user = true;
+        } else if unsafe { EqualSid(sid, system_sid.0) } != 0 {
+            if has_system {
+                return Err(invalid_data("scratch DACL duplicates the SYSTEM entry"));
+            }
+            has_system = true;
+        } else {
+            return Err(invalid_data(
+                "scratch DACL grants access to another principal",
+            ));
+        }
+    }
+    if !has_user || !has_system {
+        return Err(invalid_data(
+            "scratch DACL is missing its user or SYSTEM entry",
+        ));
+    }
+    Ok(())
 }
 
 #[link(name = "bcrypt")]
@@ -107,6 +446,7 @@ struct ObjectIdentity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CleanupStage {
     Active,
+    OwnerClosed,
     FileDeletePending,
     FileClosed,
     Complete,
@@ -121,24 +461,59 @@ pub struct ScratchLease {
     root: Handle,
     root_identity: ObjectIdentity,
     file: Option<Handle>,
+    delete_file: Option<Handle>,
+    journal: Option<journal::LeaseJournal>,
+    journal_record: Option<journal::LeaseRecord>,
     file_identity: ObjectIdentity,
     file_path: PathBuf,
     size_bytes: u64,
     cleanup_stage: CleanupStage,
+    cleanup_on_drop: bool,
 }
 
 impl ScratchLease {
     /// Creates a new randomly named file directly at the selected volume root.
     pub fn create(root: &Path, size_bytes: u64) -> io::Result<Self> {
-        Self::create_impl(root, size_bytes, true)
+        validate_size(size_bytes)?;
+        validate_root_argument(root)?;
+        let root_handle = open_directory(root, FILE_READ_ATTRIBUTES)?;
+        let root_identity = query_identity(root_handle.raw())?;
+        validate_directory(root_handle.raw(), &root_identity)?;
+        let volume_prefix = volume_guid_prefix(&root_identity.final_path)?;
+        if !windows_path_equal(&root_identity.final_path, Path::new(&volume_prefix)) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "scratch root must be the mounted volume root",
+            ));
+        }
+        drop(root_handle);
+        let journal = journal::LeaseJournal::open_default()?;
+        journal.ensure_empty()?;
+        Self::create_impl(root, size_bytes, true, Some(journal))
     }
 
     #[cfg(test)]
     pub(crate) fn create_for_test(root: &Path, size_bytes: u64) -> io::Result<Self> {
-        Self::create_impl(root, size_bytes, false)
+        Self::create_impl(root, size_bytes, false, None)
     }
 
-    fn create_impl(root: &Path, size_bytes: u64, require_volume_root: bool) -> io::Result<Self> {
+    #[cfg(test)]
+    pub(crate) fn create_journaled_for_test(
+        root: &Path,
+        journal_directory: &Path,
+        size_bytes: u64,
+    ) -> io::Result<Self> {
+        let journal = journal::LeaseJournal::open_at_for_test(journal_directory)?;
+        journal.ensure_empty()?;
+        Self::create_impl(root, size_bytes, false, Some(journal))
+    }
+
+    fn create_impl(
+        root: &Path,
+        size_bytes: u64,
+        require_volume_root: bool,
+        journal: Option<journal::LeaseJournal>,
+    ) -> io::Result<Self> {
         validate_size(size_bytes)?;
         validate_root_argument(root)?;
 
@@ -160,10 +535,35 @@ impl ScratchLease {
         verify_path_identity(&original_root, &root_identity, true)?;
         let mut created_file = None;
         for _ in 0..8 {
-            let file_path = root_identity.final_path.join(random_file_name()?);
+            let file_name = random_file_name()?;
+            let lease_id = file_name
+                .strip_prefix(SCRATCH_FILE_PREFIX)
+                .and_then(|value| value.strip_suffix(".bin"))
+                .ok_or_else(|| invalid_data("random scratch name is malformed"))?
+                .to_string();
+            let file_path = root_identity.final_path.join(file_name);
+            let journal_record = if let Some(journal) = journal.as_ref() {
+                let created_at_unix_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(|_| invalid_data("system clock is before the Unix epoch"))?
+                    .as_millis()
+                    .try_into()
+                    .map_err(|_| invalid_data("scratch creation time exceeds the journal limit"))?;
+                let record = journal::LeaseRecord::prepared(
+                    lease_id,
+                    &root_identity,
+                    file_path.clone(),
+                    size_bytes,
+                    created_at_unix_ms,
+                );
+                journal.persist_new(&record)?;
+                Some(record)
+            } else {
+                None
+            };
             match open_new_file(&file_path) {
                 Ok(file) => {
-                    created_file = Some((file_path, file));
+                    created_file = Some((file_path, file, journal_record));
                     break;
                 }
                 Err(error)
@@ -172,12 +572,24 @@ impl ScratchLease {
                         Some(ERROR_ALREADY_EXISTS) | Some(ERROR_FILE_EXISTS)
                     ) =>
                 {
+                    if let (Some(journal), Some(record)) =
+                        (journal.as_ref(), journal_record.as_ref())
+                    {
+                        journal.remove_record(record)?;
+                    }
                     continue;
                 }
-                Err(error) => return Err(error),
+                Err(error) => {
+                    if let (Some(journal), Some(record)) =
+                        (journal.as_ref(), journal_record.as_ref())
+                    {
+                        journal.remove_record(record)?;
+                    }
+                    return Err(error);
+                }
             }
         }
-        let (file_path, file) = created_file.ok_or_else(|| {
+        let (file_path, file, journal_record) = created_file.ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 "could not allocate a unique scratch file",
@@ -185,21 +597,38 @@ impl ScratchLease {
         })?;
 
         let (file, file_identity) =
-            capture_and_validate_created_file(file, &root_identity, &volume_prefix)?;
+            match capture_and_validate_created_file(file, &root_identity, &volume_prefix) {
+                Ok(captured) => captured,
+                Err(error) => {
+                    if let (Some(journal), Some(record)) =
+                        (journal.as_ref(), journal_record.as_ref())
+                    {
+                        if ensure_path_absent(&file_path).is_ok() {
+                            journal.remove_record(record)?;
+                        }
+                    }
+                    return Err(error);
+                }
+            };
 
-        let lease = Self {
+        let mut lease = Self {
             original_root,
             root: root_handle,
             root_identity,
             file: Some(file),
+            delete_file: None,
+            journal,
+            journal_record,
             file_identity,
             file_path,
             size_bytes,
             cleanup_stage: CleanupStage::Active,
+            cleanup_on_drop: true,
         };
 
         lease.set_file_size()?;
         lease.verify()?;
+        lease.mark_ready()?;
         Ok(lease)
     }
 
@@ -229,6 +658,40 @@ impl ScratchLease {
         Ok(())
     }
 
+    /// Durably records that this lease may now be passed to the contained benchmark worker.
+    ///
+    /// Test-only leases have no journal and remain usable for isolated file-contract tests.
+    pub fn mark_running(&mut self) -> io::Result<()> {
+        self.verify()?;
+        let (Some(journal), Some(record)) = (self.journal.as_ref(), self.journal_record.as_mut())
+        else {
+            return Ok(());
+        };
+        if record.state != journal::LeaseState::Ready {
+            return Err(invalid_data("scratch lease is not durably ready"));
+        }
+        record.state = journal::LeaseState::Running;
+        journal.persist(record)
+    }
+
+    /// Prevents implicit deletion when a process or native I/O may still be active.
+    /// The protected journal is left for exact recovery after all handles are released.
+    // Task 2 uses this when it connects the authorization/execution path.
+    #[allow(dead_code)]
+    pub(crate) fn retain_for_recovery(&mut self) {
+        self.cleanup_on_drop = false;
+    }
+
+    fn mark_ready(&mut self) -> io::Result<()> {
+        let (Some(journal), Some(record)) = (self.journal.as_ref(), self.journal_record.as_mut())
+        else {
+            return Ok(());
+        };
+        let file_identity = self.file_identity.file_id;
+        record.ready(file_identity);
+        journal.persist(record)
+    }
+
     /// Deletes only the file captured by this lease.
     ///
     /// An identity mismatch stops cleanup; no pathname, wildcard, or directory deletion is used.
@@ -238,24 +701,49 @@ impl ScratchLease {
             match self.cleanup_stage {
                 CleanupStage::Active => {
                     self.verify_for_cleanup()?;
-                    let file = self
-                        .file
-                        .as_ref()
-                        .ok_or_else(|| invalid_data("scratch file handle is closed"))?;
-                    set_delete_disposition(file.raw())?;
-                    self.cleanup_stage = CleanupStage::FileDeletePending;
-                }
-                CleanupStage::FileDeletePending => {
+                    if let (Some(journal), Some(record)) =
+                        (self.journal.as_ref(), self.journal_record.as_mut())
+                    {
+                        record.file_identity = Some(self.file_identity.file_id);
+                        record.state = journal::LeaseState::CleanupPending;
+                        journal.persist(record)?;
+                    }
                     self.file
                         .as_mut()
                         .ok_or_else(|| invalid_data("scratch file handle is closed"))?
                         .close()?;
                     self.file = None;
+                    self.cleanup_stage = CleanupStage::OwnerClosed;
+                }
+                CleanupStage::OwnerClosed => {
+                    validate_directory(self.root.raw(), &self.root_identity)?;
+                    verify_path_identity(&self.original_root, &self.root_identity, true)?;
+                    let delete_file = open_file_for_delete(&self.file_path)?;
+                    validate_regular_file(delete_file.raw(), &self.file_identity, self.size_bytes)?;
+                    let volume_prefix = volume_guid_prefix(&self.root_identity.final_path)?;
+                    ensure_same_volume(&self.root_identity, &self.file_identity, &volume_prefix)?;
+                    set_delete_disposition(delete_file.raw())?;
+                    self.delete_file = Some(delete_file);
+                    self.cleanup_stage = CleanupStage::FileDeletePending;
+                }
+                CleanupStage::FileDeletePending => {
+                    self.delete_file
+                        .as_mut()
+                        .ok_or_else(|| invalid_data("scratch delete handle is closed"))?
+                        .close()?;
+                    self.delete_file = None;
+                    ensure_path_absent(&self.file_path)?;
                     self.cleanup_stage = CleanupStage::FileClosed;
                 }
                 CleanupStage::FileClosed => {
                     validate_directory(self.root.raw(), &self.root_identity)?;
                     verify_path_identity(&self.original_root, &self.root_identity, true)?;
+                    if let (Some(journal), Some(record)) =
+                        (self.journal.as_ref(), self.journal_record.as_ref())
+                    {
+                        journal.remove_record(record)?;
+                        self.journal_record = None;
+                    }
                     self.root.close()?;
                     self.cleanup_stage = CleanupStage::Complete;
                 }
@@ -274,6 +762,7 @@ impl ScratchLease {
             .as_ref()
             .ok_or_else(|| invalid_data("scratch file handle is closed"))?;
         validate_owned_regular_file(file.raw(), &self.file_identity)?;
+        validate_restricted_file_dacl(file.raw())?;
         let volume_prefix = volume_guid_prefix(&self.root_identity.final_path)?;
         ensure_same_volume(&self.root_identity, &self.file_identity, &volume_prefix)?;
         verify_path_identity(&self.original_root, &self.root_identity, true)?;
@@ -307,6 +796,7 @@ fn capture_and_validate_created_file(
 ) -> io::Result<(Handle, ObjectIdentity)> {
     let file_identity = query_identity(file.raw()).and_then(|identity| {
         validate_owned_regular_file(file.raw(), &identity)?;
+        validate_restricted_file_dacl(file.raw())?;
         ensure_same_volume(root_identity, &identity, volume_prefix)?;
         Ok(identity)
     });
@@ -314,21 +804,52 @@ fn capture_and_validate_created_file(
     match file_identity {
         Ok(identity) => Ok((file, identity)),
         Err(error) => {
-            cleanup_failed_file_creation(file);
+            if let Ok(identity) = query_identity(file.raw()) {
+                cleanup_failed_file_creation(file, &identity);
+            }
             Err(error)
         }
     }
 }
 
-fn cleanup_failed_file_creation(mut file: Handle) {
-    if set_delete_disposition(file.raw()).is_ok() {
-        let _ = file.close();
+fn cleanup_failed_file_creation(mut file: Handle, expected: &ObjectIdentity) {
+    if file.close().is_ok() {
+        let _ = delete_exact_file(expected, None);
     }
 }
 
 impl Drop for ScratchLease {
     fn drop(&mut self) {
-        let _ = self.cleanup();
+        if self.cleanup_on_drop {
+            let _ = self.cleanup();
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn recover_test_journal(directory: &Path) -> super::ScratchRecoveryStatus {
+    match journal::LeaseJournal::open_at_for_test(directory) {
+        Ok(journal) => match journal.recover() {
+            journal::RecoveryResult::Clean => super::ScratchRecoveryStatus::Clean,
+            journal::RecoveryResult::CleanupRequired => {
+                super::ScratchRecoveryStatus::CleanupRequired
+            }
+            journal::RecoveryResult::Deferred => super::ScratchRecoveryStatus::Deferred,
+        },
+        Err(_) => super::ScratchRecoveryStatus::CleanupRequired,
+    }
+}
+
+pub(super) fn recover_pending_leases() -> super::ScratchRecoveryStatus {
+    match journal::LeaseJournal::open_default() {
+        Ok(journal) => match journal.recover() {
+            journal::RecoveryResult::Clean => super::ScratchRecoveryStatus::Clean,
+            journal::RecoveryResult::CleanupRequired => {
+                super::ScratchRecoveryStatus::CleanupRequired
+            }
+            journal::RecoveryResult::Deferred => super::ScratchRecoveryStatus::Deferred,
+        },
+        Err(_) => super::ScratchRecoveryStatus::CleanupRequired,
     }
 }
 
@@ -448,18 +969,58 @@ fn open_directory(path: &Path, desired_access: u32) -> io::Result<Handle> {
 
 fn open_new_file(path: &Path) -> io::Result<Handle> {
     let path = wide_path(path)?;
+    let (_descriptor, security_attributes) = protected_user_system_security_attributes()?;
     let raw = unsafe {
         CreateFileW(
             path.as_ptr(),
-            GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES,
+            GENERIC_READ | GENERIC_WRITE | FILE_READ_ATTRIBUTES,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
-            null(),
+            &security_attributes as *const SecurityAttributes as *const c_void,
             CREATE_NEW,
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
             null_mut(),
         )
     };
     Handle::from_raw(raw)
+}
+
+fn open_file_for_delete(path: &Path) -> io::Result<Handle> {
+    let path = wide_path(path)?;
+    let raw = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            DELETE | FILE_READ_ATTRIBUTES | READ_CONTROL,
+            0,
+            null(),
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
+            null_mut(),
+        )
+    };
+    Handle::from_raw(raw)
+}
+
+fn delete_exact_file(expected: &ObjectIdentity, expected_size: Option<u64>) -> io::Result<()> {
+    let mut delete_file = open_file_for_delete(&expected.final_path)?;
+    if let Some(size) = expected_size {
+        validate_regular_file(delete_file.raw(), expected, size)?;
+    } else {
+        validate_owned_regular_file(delete_file.raw(), expected)?;
+        validate_restricted_file_dacl(delete_file.raw())?;
+    }
+    set_delete_disposition(delete_file.raw())?;
+    delete_file.close()?;
+    ensure_path_absent(&expected.final_path)
+}
+
+fn ensure_path_absent(path: &Path) -> io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Err(invalid_data(
+            "scratch path remains after exact-handle deletion",
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(test)]
@@ -594,6 +1155,7 @@ fn validate_regular_file(
 ) -> io::Result<()> {
     let (_, standard) = query_attributes_and_standard(handle)?;
     validate_owned_regular_file(handle, expected)?;
+    validate_restricted_file_dacl(handle)?;
     if standard.end_of_file < 0 || standard.end_of_file as u64 != expected_size {
         return Err(invalid_data("scratch target has an unexpected size"));
     }
@@ -759,8 +1321,7 @@ fn invalid_data(message: &'static str) -> io::Error {
 
 #[cfg(test)]
 mod tests {
-    use super::ScratchLease;
-    use std::ffi::OsString;
+    use super::{recover_test_journal, ScratchLease};
     use std::fs;
     use std::io;
     use std::path::PathBuf;
@@ -785,8 +1346,25 @@ mod tests {
     }
 
     #[test]
-    fn delete_on_close_probe_allows_delete_sharing_and_removes_file_after_last_handle(
-    ) -> io::Result<()> {
+    fn ordinary_owner_allows_diskspd_read_write_share_contract() -> io::Result<()> {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let root = test_root();
+        let mut lease = ScratchLease::create_for_test(&root, 4 * 1024 * 1024)?;
+        let engine_handle = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(super::FILE_SHARE_READ | super::FILE_SHARE_WRITE)
+            .open(lease.file_path())?;
+
+        drop(engine_handle);
+        lease.cleanup()?;
+        assert!(!lease.file_path().exists());
+        fs::remove_dir(root)
+    }
+
+    #[test]
+    fn delete_pending_owner_is_incompatible_with_diskspd_read_write_sharing() -> io::Result<()> {
         use super::{open_delete_on_close_probe_file, random_file_name, set_file_size};
         use std::os::windows::fs::OpenOptionsExt;
 
@@ -799,12 +1377,16 @@ mod tests {
             "probe file must remain present while handles are open"
         );
 
-        let second_handle = fs::OpenOptions::new()
+        let engine_open = fs::OpenOptions::new()
             .read(true)
             .write(true)
-            .share_mode(super::FILE_SHARE_READ | super::FILE_SHARE_WRITE | super::FILE_SHARE_DELETE)
-            .open(&path)?;
-        drop(second_handle);
+            .share_mode(super::FILE_SHARE_READ | super::FILE_SHARE_WRITE)
+            .open(&path);
+        assert_eq!(
+            engine_open.unwrap_err().raw_os_error(),
+            Some(32),
+            "DiskSpd's fixed share mode must expose the delete-pending incompatibility"
+        );
         drop(file);
         assert!(
             !path.exists(),
@@ -814,9 +1396,82 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "CI-only: validates the pinned DiskSpd executable against a temporary delete-on-close file"]
-    fn pinned_diskspd_reads_delete_on_close_file_under_contained_job() -> io::Result<()> {
-        use super::{open_delete_on_close_probe_file, random_file_name, set_file_size};
+    fn exact_file_cleanup_waits_until_diskspd_handle_closes() -> io::Result<()> {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let root = test_root();
+        let mut lease = ScratchLease::create_for_test(&root, 4 * 1024 * 1024)?;
+        let path = lease.file_path().to_path_buf();
+        let engine_handle = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(super::FILE_SHARE_READ | super::FILE_SHARE_WRITE)
+            .open(&path)?;
+
+        assert!(
+            lease.cleanup().is_err(),
+            "cleanup must wait until the DiskSpd-compatible handle drains"
+        );
+        assert!(path.exists(), "failed cleanup must preserve the target");
+        drop(engine_handle);
+        lease.cleanup()?;
+        assert!(
+            !path.exists(),
+            "exact-handle cleanup removes the target after drain"
+        );
+        fs::remove_dir(root)
+    }
+
+    #[test]
+    fn scratch_file_acl_is_protected_to_the_current_user_and_system() -> io::Result<()> {
+        use std::process::Command;
+
+        let root = test_root();
+        let mut lease = ScratchLease::create_for_test(&root, 4 * 1024 * 1024)?;
+        let identity = Command::new("whoami.exe").output()?;
+        let identity = String::from_utf8_lossy(&identity.stdout)
+            .lines()
+            .last()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        let output = Command::new("icacls.exe").arg(lease.file_path()).output()?;
+        assert!(
+            output.status.success(),
+            "icacls failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let acl = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+        let explicit_rules = acl
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.contains(":(") && !line.contains("(i)"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            explicit_rules.len(),
+            2,
+            "scratch file must have exactly two explicit access rules: {acl}"
+        );
+        assert!(
+            explicit_rules
+                .iter()
+                .any(|line| line.contains(&identity) && line.ends_with("(f)")),
+            "scratch DACL must grant full access to the current user: {acl}"
+        );
+        assert!(
+            explicit_rules
+                .iter()
+                .any(|line| line.contains("system:(f)")),
+            "scratch DACL must grant full access to SYSTEM: {acl}"
+        );
+        lease.cleanup()?;
+        fs::remove_dir(root)
+    }
+
+    #[test]
+    #[ignore = "CI-only: validates the pinned DiskSpd executable against an ordinary shareable temporary lease"]
+    fn pinned_diskspd_opens_ordinary_lease_and_exact_cleanup_under_contained_job() -> io::Result<()>
+    {
         use crate::job_process::{run_process, ProcessCommand, ProcessLimits};
 
         if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true") {
@@ -831,51 +1486,57 @@ mod tests {
             })?);
         let verified = crate::VerifiedDiskSpd::verify(&executable)?;
         let root = test_root();
-        let path = root.join(random_file_name()?);
-        let file = open_delete_on_close_probe_file(&path)?;
-        set_file_size(file.raw(), 64 * 1024 * 1024)?;
-
-        let args = vec![
-            OsString::from("-b1M"),
-            OsString::from("-o1"),
-            OsString::from("-t1"),
-            OsString::from("-w0"),
-            OsString::from("-W0"),
-            OsString::from("-d2"),
-            OsString::from("-Su"),
-            OsString::from("-L"),
-            OsString::from("-Rxml"),
-            path.as_os_str().to_os_string(),
-        ];
-        let command = ProcessCommand::test_fixture(verified.path().to_path_buf(), args)
-            .map_err(|error| io::Error::other(error.to_string()))?;
-        let limits = ProcessLimits::from_workload(0, 2)
-            .map_err(|error| io::Error::other(error.to_string()))?;
-        let output = run_process(command, limits, &AtomicBool::new(false))
-            .map_err(|error| io::Error::other(error.to_string()))?;
-        if output.exit_code != 0 || output.stdout.is_empty() {
-            let stderr = String::from_utf8_lossy(&output.stderr)
-                .replace(&path.to_string_lossy().to_string(), "<probe-file>");
-            let stderr_preview = stderr.chars().take(512).collect::<String>();
+        let journal = root.join("journal");
+        let lease = ScratchLease::create_journaled_for_test(&root, &journal, 64 * 1024 * 1024)?;
+        let path = lease.file_path().to_path_buf();
+        let engine_path = verified.path().to_path_buf();
+        let result = crate::execution::execute_lease(lease, |lease| {
+            let args = crate::build_diskspd_args(
+                lease,
+                crate::DiskSpdProfile::Seq1mQ1T1,
+                crate::DiskSpdDirection::Read,
+                0,
+                2,
+            )
+            .map_err(|_| crate::job_process::ProcessError::InvalidWorkload)?;
+            let command = ProcessCommand::test_fixture(engine_path, args)?;
+            let limits = ProcessLimits::from_workload(0, 2)?;
+            run_process(command, limits, &AtomicBool::new(false))
+        })
+        .map_err(|error| io::Error::other(error.to_string()))?;
+        let trimmed_xml = result.xml.trim_start();
+        let xml_document = trimmed_xml
+            .strip_prefix("<?xml")
+            .and_then(|declaration| declaration.find("?>").map(|end| &declaration[end + 2..]))
+            .unwrap_or(trimmed_xml)
+            .trim_start();
+        if result.target_path != path
+            || !xml_document.starts_with("<Results")
+            || !xml_document.contains("</Results>")
+        {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    "pinned DiskSpd did not complete the bounded temporary-file read: exit_code={}, stdout_bytes={}, stderr_bytes={}, stderr_preview={stderr_preview:?}",
-                    output.exit_code,
-                    output.stdout.len(),
-                    output.stderr.len()
-                ),
+                "pinned DiskSpd did not produce a bounded XML result document",
             ));
         }
         drop(verified);
-        drop(file);
         if path.exists() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "delete-on-close probe file remained after the contained process drained",
+                "exact-handle scratch cleanup left the temporary file after the job drained",
             ));
         }
-        fs::remove_dir(root)
+        if crate::scratch::recover_test_journal(&journal) != crate::ScratchRecoveryStatus::Clean
+            || fs::read_dir(&journal)?.any(|entry| {
+                entry.is_ok_and(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+            })
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "pinned DiskSpd cleanup left a recoverable lease record",
+            ));
+        }
+        fs::remove_dir_all(root)
     }
     #[test]
     fn rejects_reparse_file_attribute_without_filesystem_privileges() {
@@ -1049,6 +1710,92 @@ mod tests {
         assert!(lease.verify().is_err());
         assert!(!path.exists());
         fs::remove_dir(root)
+    }
+
+    #[test]
+    fn recovery_preserves_replacement_wrong_size_and_hard_link_targets() -> io::Result<()> {
+        fn abandon(mut lease: ScratchLease) -> io::Result<PathBuf> {
+            let path = lease.file_path().to_path_buf();
+            lease.retain_for_recovery();
+            lease
+                .file
+                .take()
+                .ok_or_else(|| io::Error::other("scratch owner handle is missing"))?
+                .close()?;
+            drop(lease);
+            Ok(path)
+        }
+
+        let root = test_root();
+        let journal = root.join("journal");
+
+        let replacement_path = abandon(ScratchLease::create_journaled_for_test(
+            &root,
+            &journal,
+            4 * 1024 * 1024,
+        )?)?;
+        fs::remove_file(&replacement_path)?;
+        fs::write(&replacement_path, b"unrelated replacement")?;
+        assert_eq!(
+            recover_test_journal(&journal),
+            super::super::ScratchRecoveryStatus::CleanupRequired
+        );
+        assert!(replacement_path.exists(), "recovery deleted a replacement");
+        fs::remove_file(&replacement_path)?;
+        assert_eq!(
+            recover_test_journal(&journal),
+            super::super::ScratchRecoveryStatus::Clean
+        );
+
+        let wrong_size_path = abandon(ScratchLease::create_journaled_for_test(
+            &root,
+            &journal,
+            4 * 1024 * 1024,
+        )?)?;
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&wrong_size_path)?
+            .set_len(1024)?;
+        assert_eq!(
+            recover_test_journal(&journal),
+            super::super::ScratchRecoveryStatus::CleanupRequired
+        );
+        assert!(
+            wrong_size_path.exists(),
+            "recovery deleted a wrong-size file"
+        );
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&wrong_size_path)?
+            .set_len(4 * 1024 * 1024)?;
+        assert_eq!(
+            recover_test_journal(&journal),
+            super::super::ScratchRecoveryStatus::Clean
+        );
+
+        let linked_path = abandon(ScratchLease::create_journaled_for_test(
+            &root,
+            &journal,
+            4 * 1024 * 1024,
+        )?)?;
+        let hard_link_path = root.join("unrelated-hard-link.bin");
+        fs::hard_link(&linked_path, &hard_link_path)?;
+        assert_eq!(
+            recover_test_journal(&journal),
+            super::super::ScratchRecoveryStatus::CleanupRequired
+        );
+        assert!(linked_path.exists(), "recovery deleted a linked file");
+        assert!(
+            hard_link_path.exists(),
+            "recovery deleted an unrelated link"
+        );
+        fs::remove_file(&hard_link_path)?;
+        assert_eq!(
+            recover_test_journal(&journal),
+            super::super::ScratchRecoveryStatus::Clean
+        );
+
+        fs::remove_dir_all(root)
     }
 
     #[test]

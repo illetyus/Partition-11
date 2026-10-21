@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable ref snapshot
         with:
-          toolchain: stable
+          toolchain: 1.99.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24.21.0'
@@ -27,7 +27,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Compile strictly bounded XML parser
         run: npm run build:main
-      - name: Verify official pinned DiskSpd and exercise read-only scratch-file
+      - name: Verify official pinned DiskSpd and exercise exact-handle scratch cleanup
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -58,8 +58,8 @@ jobs:
               throw "Extracted DiskSpd executable hash does not match the pinned manifest"
             }
             $env:P11_DISKSPD_TEST_BINARY = $bins[0].FullName
-            cargo test --locked -p partition11-benchmark-worker --lib pinned_diskspd_reads_delete_on_close_file_under_contained_job -- --ignored
-            if ($LASTEXITCODE -ne 0) { throw "Pinned DiskSpd delete-on-close compatibility test failed" }
+            cargo test --locked -p partition11-benchmark-worker --lib pinned_diskspd_opens_ordinary_lease_and_exact_cleanup_under_contained_job -- --ignored
+            if ($LASTEXITCODE -ne 0) { throw "Pinned DiskSpd ordinary lease and exact cleanup compatibility test failed" }
             # CI runner internally constructs its own exclusive scratch lease
             # and fixed read-only DiskSpd arguments; no renderer input is used.
             node tests/run-safe-diskspd-ci.cjs $bins[0].FullName $manifest.xmlResultVersion

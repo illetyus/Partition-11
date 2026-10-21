@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed; awaiting user approval. No implementation or runtime change is authorized by this proposal alone.
+Accepted by the user on 2026-10-21 for implementation. Runtime enablement and physical-device testing remain separately gated.
 
 ## Date
 
@@ -16,7 +16,7 @@ The Microsoft DiskSpd v2.3 source opens an existing target with `FILE_SHARE_READ
 
 Local Win32-only disposable-file probes reproduced the conflict without launching DiskSpd: a delete-on-close handle followed by a DiskSpd-shaped open failed with error 32, even when the first handle did not explicitly request DELETE access. The intended ordinary owner handle (read/write access, `FILE_SHARE_READ | FILE_SHARE_WRITE`, no DELETE access) allowed the DiskSpd-shaped open. DELETE opens failed with error 32 while either that owner handle or the DiskSpd-shaped handle remained open. After both closed, an exclusive DELETE handle set `FILE_DISPOSITION_INFO`, and the file disappeared.
 
-## Proposed decision
+## Decision
 
 Retain the exact pinned DiskSpd executable and replace the planned delete-on-close integration plus the current DELETE-access-in-flight owner handle with a user-protected, exact-object crash-recovery journal. During DiskSpd execution, the owner handle must not request DELETE and the file must not be delete-pending. The lease must still be created with CREATE_NEW, a cryptographically random name, a restrictive current-user/SYSTEM DACL, and captured volume/file identity. While active, the owner handle requests only read/write/attribute access and uses `FILE_SHARE_READ | FILE_SHARE_WRITE` without `FILE_SHARE_DELETE`. This permits DiskSpd's fixed read/write open but blocks DELETE opens while the owner handle remains open.
 

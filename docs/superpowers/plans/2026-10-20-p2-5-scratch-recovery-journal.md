@@ -1,9 +1,9 @@
 # P2.5 scratch recovery journal — implementation plan proposal
 
-> Status: Draft; awaiting explicit user approval of the specification and this plan.
+> Status: Approved for implementation by the user on 2026-10-21.
 > Worktree: `D:\Partition 11\.worktrees\readonly-disk-preview`
 > Prerequisite: [scratch-recovery specification](../specs/2026-10-20-p2-5-scratch-recovery-journal.md) and [ADR-0004](../../decisions/0004-p2-5-scratch-recovery-journal.md).
-> Until approved: do not replace ScratchLease, change cleanup semantics, enable benchmark IPC/UI, or run physical-device tests.
+> Runtime enablement and physical-device tests remain outside this approval.
 
 ## Goal
 
@@ -32,7 +32,7 @@ Files: new journal module under `crates/benchmark-worker/src/`, worker tests, an
 
 1. Define and strictly parse a versioned record with lease ID, exact volume/root and file identities, path, size, timestamp, and lifecycle state.
 2. Create the per-user journal directory with current-user/SYSTEM-only ACL. Reject unexpected owner/ACL, symlink/reparse records, oversized data, duplicate IDs, unknown fields/states, and malformed identities.
-3. Persist each transition by write/flush/atomic replace in the same directory before allowing the next side effect. Cover interrupted writes and idempotent recovery.
+3. Persist each transition by write/flush/atomic replace in the same directory before allowing the next side effect. Initial insertion must not replace an existing lease ID; updates must preserve immutable identity and follow an allowed lifecycle transition. On recovery, accept only exact protected temp names and records, promote a single valid next transition, remove only verified redundant temps, and keep malformed, mismatched, or untrusted entries untouched while blocking new runs. Cover interruption before and after replace and idempotent recovery.
 4. Treat the create-to-file-ID-commit window as an unresolved state: never delete the path without a captured file ID; latch cleanup-required and block new runs.
 
 ## Task 4 — Integrate cancellation, shutdown, and recovery
@@ -43,7 +43,7 @@ Files: `crates/windows-agent/src/benchmark_run.rs`, `src/main/main.ts`, and rela
 2. On cancellation or failure, drain the Job Object before cleanup. `Undrained` retains the lease and journal and blocks another run.
 3. On startup and when a volume returns, inspect only protected journal records. Reopen the exact path, compare volume identity/file ID/size and metadata, and delete only the validated file handle.
 4. Missing, corrupt, mismatched, inaccessible, or unresolved records keep `cleanup_required`; never scan a volume or delete by prefix.
-5. Return only sanitized cleanup state through main-process-owned UI state. Do not return internal file paths or disk identifiers to the renderer.
+5. Return only sanitized cleanup state through main-process-owned UI state. A worker cleanup error must latch main-process recovery state so a later inventory request retries recovery; a confirmed clean recovery releases both cleanup/recovery latches. Do not return internal file paths or disk identifiers to the renderer.
 
 ## Task 5 — CI, package, and release gates
 
@@ -63,3 +63,11 @@ Files: `.github/workflows/windows-diskspd-xml.yml`, Windows UI workflow, package
 - Crash recovery is idempotent, exact-object-only, and fail-closed for incomplete or mismatched evidence.
 - No cleanup path reports success while the file remains or the journal is unresolved.
 - Benchmark capability stays disabled until all implementation and automated release gates pass; no Codex physical-device or volume benchmark is run.
+
+## Execution checkpoint — 2026-10-21
+
+- Task 1: implemented the red/green DiskSpd sharing regression and updated the Windows CI command. Local share-contract tests pass; the pinned executable CI run remains pending.
+- Task 2: implemented the non-DELETE owner handle, protected scratch DACL, and exact-handle cleanup. Windows worker tests pass, including the replacement, junction, ACL, and sharing cases.
+- Task 3: implemented strict version-1 records, atomic flush-and-replace persistence, no-clobber insertion, monotonic lifecycle validation, interrupted-temp reconciliation, exclusive journal locking, exact-record removal, and fail-closed recovery. Windows journal tests cover interrupted insert/update, duplicate IDs, malformed bytes, untrusted ACLs, and repeat recovery.
+- Task 4: added the sanitized agent recovery operation, bounded Electron main-process invocation, startup gate, worker-error recovery callback, and retry on a later inventory request. The benchmark process runner remains disconnected; `running` persistence and drain-before-cleanup integration are still open, while the runtime gate stays false.
+- Task 5: local Windows workspace tests, strict Clippy, rustfmt, Electron main tests, production build, 42-assertion mock-only UI smoke, and unsigned unpacked x64 package/SBOM checks pass. Fresh GitHub Actions and the pinned DiskSpd CI workload remain pending. The package EXE is at `release/p2.5-scratch-recovery-20261021-final/win-unpacked/Partition 11.exe` (SHA-256 `ACF10184D8997101B0BBFBC8EE25F3448DDF2815DA5B4B65A053A726213A6AAE`). No physical-device operation was run.

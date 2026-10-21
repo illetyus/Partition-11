@@ -1,3 +1,15 @@
+# Current handoff — approved P2.5 scratch recovery (2026-10-21)
+
+The user approved ADR-0004, `docs/superpowers/specs/2026-10-20-p2-5-scratch-recovery-journal.md`, and its plan on 2026-10-21. Work is in `D:\Partition 11\.worktrees\readonly-disk-preview` on `feature/p2.5-volume-eligibility-policy`; changes remain local and uncommitted. `BENCHMARK_RUNTIME_ENABLED` is still false. Do not run DiskSpd locally, enumerate physical disks, benchmark a mounted volume, or merge; the user owns physical Windows 11 acceptance.
+
+Implemented: DiskSpd-compatible scratch sharing, protected user/SYSTEM ACLs, identity-bound cleanup after handles close, strict atomic journal records, no-clobber initial insert, monotonic lifecycle updates, recovery of validated interrupted temp records, and fail-closed startup recovery through the Windows agent. Electron main invokes recovery before creating the window and retries after a worker cleanup failure on a later inventory request. Agent output contains only a protocol version and one sanitized recovery status.
+
+Verified locally on 2026-10-21: Windows x64 Rust workspace tests passed (agent 122, worker 42, core 20, ext-reader 5, image integration tests 11; physical-device probes and three worker fixtures were ignored); rustfmt and strict Clippy passed; Electron main tests passed 81/81; `npm run build` passed; mock-only Electron UI smoke passed 42/42 assertions. New journal tests cover interrupted insert/update recovery, repeat recovery, invalid temp bytes/ACL, and duplicate IDs. The main-process recovery wrapper returned `clean` against an isolated temporary `LOCALAPPDATA`. An unsigned unpacked x64 preview was built at `release/p2.5-scratch-recovery-20261021-final/win-unpacked`; EXE SHA-256 `ACF10184D8997101B0BBFBC8EE25F3448DDF2815DA5B4B65A053A726213A6AAE`. Packaged agent SHA-256 matched its release build; DiskSpd v2.3, MIT license, manifest, and CycloneDX SBOM were present and matched the pinned manifest.
+
+Remaining before an end-to-end benchmark test build: the Rust benchmark process runner is not connected to the main controller, and `running` journal persistence plus drain-before-cleanup still need implementation. The current unsigned unpacked preview is reviewable but benchmark runtime remains disabled. Run fresh GitHub Actions including the pinned DiskSpd compatibility gate before production runner integration can be claimed complete. No physical-device gate is delegated to Codex.
+
+---
+
 # Güncel devam noktası — P2.5 güvenlik kapıları (20 Ekim 2026)
 ## En yeni yerel doğrulama - P3/P9 (20 Ekim 2026)
 

@@ -1,7 +1,7 @@
 # P2.5 scratch lease crash-recovery design
 
-Status: **Proposed; awaiting explicit user approval.** This document does not authorize implementation, runtime enablement, or physical-device testing.
-Date: 2026-10-20
+Status: **Approved for implementation by the user on 2026-10-21.** Approval does not authorize runtime enablement or physical-device testing.
+Date: 2026-10-20; approval recorded 2026-10-21
 Supersedes: none. It proposes an amendment to Task 1 of `2026-10-20-p2-5-production-benchmark-integration.md`.
 Decision record: [ADR-0004](../../decisions/0004-p2-5-scratch-recovery-journal.md).
 
