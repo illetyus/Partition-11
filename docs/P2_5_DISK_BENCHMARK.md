@@ -1,6 +1,46 @@
 # P2.5 — Disk Benchmark: literature review and implementation plan
 
-Reviewed: 2026-10-19. State: P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives and P2.5B.2 bounded write-rate planning are implemented for tests. PR #51 merged P2.5B.3 protected MBR/GPT partition metadata through worker protocol v2. Volume-to-disk mapping, complete system-volume exclusion, and target authorization remain open. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
+## Current implementation checkpoint — 2026-10-20
+
+The approved spec now has a strict Rust one-shot request parser and a pure
+fresh-target validator. It binds the requested volume/disk/partition ordinals
+to the re-scanned eligibility result, keyed identity hash, uniqueness across
+all scanned disks, NTFS, and the minimum free-space bound. A Rust/TypeScript
+golden HMAC test confirms both sides encode the same authorization message.
+The agent does not dispatch this mode or create files yet.
+
+Electron now has exact-shape start/cancel IPC, one-active-run state, one-use
+selection consumption, per-run native consent details, cancellation gating,
+and a shared fixed impact estimate. The production runtime gate remains
+explicitly false, so these APIs return unavailable and the renderer controls
+remain disabled. Main tests cover malformed renderer requests, consent denial,
+replay, busy/cancel races, and refusing success before cleanup.
+
+Current verification: Rust workspace 180 passed / 4 ignored; main tests 71/71;
+strict Clippy, fmt check, full TypeScript/Electron build, and mock-only Windows
+UI smoke passed. The pinned DiskSpd delete-on-close test is intentionally
+ignored locally and has not run in CI. Therefore the CI compatibility gate,
+production scratch ACL/lifecycle, agent dispatch, child-process integration,
+validated result path, active UI, and candidate package remain incomplete. No
+physical inventory, DiskSpd workload, or volume write ran.
+
+Task 1 local regression coverage — 2026-10-20
+
+The Windows x64 worker suite now covers junction-root rejection, replacement at a captured file path, and the FILE_ATTRIBUTE_REPARSE_POINT file-metadata rule. The suite passed 28 tests with 3 ignored; the full locked workspace also passed agent 122, worker 28, core 20, and ext-reader 16 tests. Workspace fmt, warning-denying Clippy, and locked release build passed.
+
+The explicit process-exit lease cleanup probe produced the expected RED: the current ScratchLease leaves its file after owner-process exit without Drop. It remains ignored pending the Windows CI DiskSpd delete-on-close compatibility gate. The gate has not run; the production lease/runtime remain unchanged and disabled. No DiskSpd workload or physical-device test ran.
+
+A direct file-symlink fixture could not be created here (Win32 error 1314). The local reparse checks use an unprivileged directory junction plus a pure test of the file reparse metadata rule; this does not prove file-symlink handle behavior on this host.
+
+Reviewed: 2026-10-19. P2.5A mock UI, typed disabled IPC, strict XML parser and CI XML integration are implemented; P2.5B.1 owned scratch-file/workload-planner primitives and P2.5B.2 bounded write-rate planning are implemented for tests. PR #51 merged P2.5B.3 protected MBR/GPT partition metadata through worker protocol v2. Local P2.5B.4 adds bounded drive-letter-to-partition mapping, fail-closed volume eligibility, and a process-local HMAC binding for stable disk identities. The unsigned x64 candidate and production scratch-file integration, pinned-engine, consent, Job Object, and user hardware gates are recorded in `docs/PLAN.md`; production benchmark launch remains disabled. No production benchmark worker is connected to the UI, no hardware benchmark is enabled, and no raw writes are allowed. See SESSION_HANDOFF.md.
+
+Current 2026-10-20 status supersedes older dated checkpoint text below: the
+official pinned DiskSpd v2.3 AMD64 executable, MIT notice, manifest, and a
+component CycloneDX SBOM are included in the unsigned preview package inputs.
+The app still cannot start a benchmark. The delete-on-close compatibility test
+is prepared for Windows Actions but has not run on this local branch, so the
+production lease remains unchanged and the Benchmark Start/Cancel controls
+remain disabled.
 
 ## Decision and scope
 
@@ -21,6 +61,10 @@ unmounted ext4 partition, nor prove how that partition behaves on Linux.
 | CrystalDiskMark | https://github.com/hiyohiyo/CrystalDiskMark — DiskBench.cpp MIT header and DiskSpd executable invocation | Workloads and UX, no code/assets copied |
 | fio | https://github.com/axboe/fio — COPYING GPLv2, README.rst Windows/Cygwin build | Independent development oracle only |
 | Windows File I/O | https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering | Unbuffered I/O alignment and cache rules |
+| Microsoft volume handles | https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew | Direct volume access requires administrator privileges; excluded from the non-elevated agent |
+| Win32_LogicalDiskToPartition | https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-logicaldisktopartition | Supported WMI association between a logical drive and its partition |
+| Win32_DiskPartition | https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-diskpartition | Read-only partition disk index, start offset and size |
+| Get-CimAssociatedInstance | https://learn.microsoft.com/en-us/powershell/module/cimcmdlets/get-cimassociatedinstance?view=powershell-5.1 | Local CIM association query used by the bounded preflight |
 
 Core DiskSpd documentation:
 
@@ -129,7 +173,7 @@ sizes, caching and queue depth differ.
 - [ ] P2 Windows read-only volume enumeration complete
 - [ ] P2.5A typed profiles, UI and XML parser, deterministic fixtures
 - [ ] P2.5A keyboard, dark/light and screenshot tests in Windows Actions
-- [ ] P2.5B pinned DiskSpd executable and license notices
+- [ ] P2.5B pinned DiskSpd executable and license notices (local manifest/notice added; workflow and production-distribution gates remain open)
 - [ ] P2.5B create-new scratch file, volume/ownership verification
 - [ ] P2.5B raw targets, symlinks, UNC paths and injections rejected
 - [ ] P2.5B write-rate ceiling and consent byte estimate enforced by live worker
@@ -245,3 +289,167 @@ the UI or a production worker, and it is not proof of any live write behavior.
 The official DiskSpd command reference defines `-g` as a per-thread,
 per-target bytes-per-millisecond throughput throttle:
 https://github.com/microsoft/diskspd/wiki/Command-line-and-parameters
+
+## Local P2.5B.4 — Non-elevated volume eligibility preflight
+
+The agent obtains the OS volume GUID from `GetSystemWindowsDirectoryW`,
+enumerates volume metadata with the documented volume-management APIs, and
+queries the local `Win32_LogicalDiskToPartition` association through a fixed
+PowerShell command. It uses a 3-second CIM operation timeout and kills the
+PowerShell process after 5 seconds; output is limited to 512 KiB and 4,096
+numeric mapping rows. The mapping is queried twice in a scan. Each extent
+must map to exactly one current disk record and one occupied partition range
+from the independent Windows disk-layout query. WMI access or parsing failure
+never grants eligibility.
+
+Direct `CreateFile` volume handles are not used for extent lookup because
+Microsoft documents administrative privileges as a requirement for direct
+volume access. This application rejects elevated execution and does not
+request UAC. The local WMI query is read-only; if PowerShell/CIM is unavailable,
+blocked by local policy, times out, or returns an incomplete mapping, targets
+remain ineligible. The renderer receives no volume GUID or WMI path, only a
+drive-letter root and bounded metadata. System-volume drive letter aliases
+and folder mount aliases are both considered when rejecting ambiguous
+mounts.
+
+Stable-identity uniqueness is fail-closed across the full scanned disk list:
+if any enumerated disk is unavailable or its stable identity cannot be read,
+the candidate volume is `identity_unavailable`, because uniqueness cannot be
+proven from a partial set. This local rule is covered by an agent unit test.
+
+This is a **local implementation checkpoint**, not a completed acceptance
+gate. Rust policy/decoder tests, Clippy, Windows x64 release compilation,
+TypeScript typecheck, main-process tests, production Electron build, and
+Windows UI smoke pass. The UI smoke used static data, passed 45 assertions
+and captured 11 screenshots; it confirms app launch does not query a physical
+disk. The physical Windows 11 inventory test is intentionally left for the
+user. Benchmark launch, file creation and writes remain disabled.
+
+
+## Local P2.5B.5 — Isolated Windows scratch-file lease (2026-10-20)
+
+A Windows-only library crate, crates/benchmark-worker, now contains an internal ScratchLease primitive. Its production entry point accepts only a mounted volume root, avoiding arbitrary ancestor paths that could be redirected between validation and file creation. It atomically creates one cryptographically random CREATE_NEW file directly at that root with a 4 MiB to 1 GiB, 4096-byte-aligned size bound. It captures the returned file handle's identity (volume serial plus 128-bit file ID), obtains the normalized volume-GUID path, rejects reparse points and files with multiple links, and holds the handle without FILE_SHARE_DELETE to block rename/removal while leased. Verification reopens the path and compares it with the captured handle identity. Cleanup marks only the captured file for deletion by handle; no directory is created or removed. If post-CREATE_NEW identity or volume validation fails, the code attempts to delete that exact file handle. The temporary-directory root helper is compiled only for tests.
+
+CREATE_NEW creation and FILE_FLAG_OPEN_REPARSE_POINT semantics follow [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew); unique names use [BCryptGenRandom](https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptgenrandom) with the system-preferred RNG flag.
+
+The Win32 layouts were checked against Microsoft's FILE_STANDARD_INFO and FILE_DISPOSITION_INFO definitions: their BOOLEAN fields are one byte. See [FILE_STANDARD_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_standard_info), [FILE_DISPOSITION_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_disposition_info), [GetFileInformationByHandleEx](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandleex), [FILE_ID_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info), and [GetFinalPathNameByHandleW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew), and [SetFileInformationByHandle](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileinformationbyhandle).
+
+The crate is not a binary, is not packaged or connected to Electron/agent IPC, and does not launch DiskSpd or access physical disks. Four Windows tests used only a temporary directory and passed; strict workspace Clippy passed. These checks validate the local primitive only. No volume eligibility scan, real-drive test, benchmark, raw disk access, or write workload was run. The prior Electron ZIP predates this crate and does not contain it.
+
+The P2.5 acceptance item for an integrated production scratch-file target remains open. In particular, filesystem ACL/privacy policy, recovery after process crash, DiskSpd pinning and target validation, consent, process-tree cancellation, verified live metrics, CI integration, and the user's physical Windows 11 acceptance remain gates.
+
+## Local P2.5B.6 — DiskSpd CI provenance and license notice (2026-10-20)
+
+The official Microsoft DiskSpd v2.3 release asset is recorded in
+third_party/diskspd/manifest.json with its release tag, GitHub-reported
+signed commit prefix, amd64 architecture, XML result version 2.3.0, official
+asset URL, and pinned SHA-256. The matching MIT notice is preserved beside
+the manifest. The Windows read-only CI workflow now reads those values from
+the manifest, verifies the ZIP digest before extraction, selects exactly one
+amd64 executable, and passes the pinned XML version into its strict parser.
+
+A regression test checks the manifest and MIT notice and guards the current
+Electron packaging allowlist against including DiskSpd. This is source-level
+evidence only until the updated GitHub Actions workflow passes. The executable
+is not checked into the repository, packaged in the app, connected to a
+production worker, or run against a user volume. Production redistribution
+still requires delivery of the MIT notice and a full release/SBOM review.
+## Local P2.5B.7 — Internal bounded Windows process supervisor (2026-10-20)
+
+The Windows-only `partition11-benchmark-worker` crate now contains a crate-private process supervisor for a future file-backed benchmark worker. It creates an anonymous Job Object with kill-on-close and a four-process cap, then uses `PROC_THREAD_ATTRIBUTE_JOB_LIST` to create the child already contained in that job and suspended before resuming it. `STARTUPINFOEX` also carries an explicit allowlist containing only the NUL stdin handle and the child stdout/stderr pipe writers; unrelated parent handles are not inherited. Microsoft's API reference documents this job-list attribute for Windows 10 and newer; process creation fails closed if setup cannot use it. See [UpdateProcThreadAttribute](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute) and [InitializeProcThreadAttributeList](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-initializeprocthreadattributelist).
+
+The parent polls and drains both anonymous pipes while checking cancellation, the validated warmup-plus-measurement deadline, and the Job Object active-process count. Captured stdout is limited to 1 MiB and stderr to 16 KiB. Timeout, cancellation, output overflow, and pipe/query failures request termination of the entire job and wait up to 15 seconds for it to empty. Failure to verify an empty job is returned as `Undrained`, including an accounting-query error during drain; a future caller must keep the scratch lease and must not claim cleanup is safe on that result. A normal return waits for descendants as well as the primary process and captures the bounded output.
+
+Windows worker verification on this host: `cargo fmt --all -- --check`; `cargo test --locked -p partition11-benchmark-worker` (15 passed, one ignored helper); `cargo clippy --locked -p partition11-benchmark-worker --all-targets -- -D warnings`; and `cargo build --locked --workspace --release`. Tests use local command fixtures and an ignored helper that starts a short PowerShell sleeper. No DiskSpd executable was launched, no physical volume was queried or written, and no live inventory or hardware acceptance was performed.
+
+This remains an internal primitive, not a production benchmark worker. It has no production command constructor, no IPC or Electron connection, no package integration, no consent flow, and no volume authorization. DiskSpd remains CI-only and excluded from the application package. User-run Windows 11 hardware acceptance remains a later, separate gate.
+
+## Local P2.5B - Write-impact disclosure (2026-10-20)
+
+The preview displays a bounded maximum byte/time estimate for the write profile as repeat count changes. A shared helper and the main-process workload planner use the same 100 MB/s throttle and include the per-run 15-second termination allowance. The only preview test-file size is 1 GiB, matching the native ScratchLease maximum. Unit tests cover 1 and 3 repetitions; the mock-IPC Electron UI smoke verifies the displayed 3.5 GB / 35 second and 10.5 GB / 105 second upper bounds.
+
+This is not the required separate per-run consent flow. Start and Cancel remain disabled, and the estimate does not prove actual write behavior. Production worker integration, target/identity binding, ACL and crash recovery, validated live XML metrics, CI and user hardware acceptance remain open. Local UI behavior passed; screenshot capture was skipped because this Windows host's Electron compositor returned `UnknownVizError`.
+
+## Current local checkpoint — P2.5 safety-gate preparation (2026-10-20)
+
+The official Microsoft DiskSpd v2.3 AMD64 executable is pinned by its upstream
+archive digest and executable SHA-256, configured for inclusion only in the
+next unsigned preview, and accompanied by the MIT notice and a component
+CycloneDX 1.5 record. The
+Windows DiskSpd workflow now checks both hashes and schedules an ignored Rust
+test that runs the exact pinned engine read-only against a temporary file
+opened with delete-on-close flags inside the existing kill-on-close Job Object.
+This compatibility workflow is **not yet verified** because it has not run on
+the local branch. No DiskSpd workload was run on this computer.
+
+Fresh volume records now retain the validated volume-GUID root internally for
+later scratch-lease creation. The one-run target validator rejects a missing or
+malformed root and returns it as `volume_guid_root`; the public inventory
+response does not expose it. The Windows agent's complete unit suite passed 122
+tests with two physical-device tests ignored; focused benchmark-protocol tests
+passed 8/8, inventory-serialization tests 6/6, and agent Clippy/rustfmt passed.
+This validates only in-memory path binding and does not connect or launch a
+worker.
+
+Main-process volume selection tokens now expire after 60 seconds and are
+consumed once; only the main-process service receives a copy of the keyed
+identity secret. The approved contract now permits one profile run per
+consent; the repetition selector was removed. Fresh verification passed:
+`npm run test:main` 76/76, `npm run build`, and the capture-disabled Windows
+Electron mock-IPC smoke. Locked workspace Rust tests passed: agent 122 (two
+physical-device tests ignored), benchmark-worker 24 (process-fixture and CI
+DiskSpd tests ignored), core 20, and ext-reader 16. Workspace rustfmt,
+warnings-as-errors Clippy, and release build passed. The ordinary local
+screenshot path previously returned `UnknownVizError`; no screenshot evidence
+is claimed.
+
+Production worker launch, consent-bound execution, fresh agent dispatch,
+delete-on-close production lifecycle, verified live metrics, and Windows
+Actions acceptance remain open. No physical-volume inventory, benchmark,
+format, or write was performed. P2.5 and the user's Windows 11 acceptance are
+not complete. `npm audit --omit=dev --audit-level=moderate` could not refresh
+because this environment could not resolve `registry.npmjs.org`; dependency
+advisory status for the current lockfile is unverified.
+
+## 2026-10-20 — Main-process result validation checkpoint
+
+The Electron main-process controller now treats worker output as untrusted. It
+requires the exact report/result fields, pinned DiskSpd XML version, fixed 1 GiB
+file and 5/15-second timing, matching NTFS volume identity, direction-specific
+cache policy, the requested single profile/direction, canonical UTC timestamp,
+and finite positive measurements with ordered percentiles. Unexpected fields,
+malformed results, and uncertain post-launch failures fail closed and latch
+`cleanup_required` for later starts.
+
+The strict XML parser also binds `TestTimeSeconds` to the trusted requested
+measurement duration within a 10% tolerance (minimum 250 ms); it rejects an
+invalid/unpinned parser context and materially short or long runs before
+calculating throughput and IOPS.
+
+Main validates the worker's keyed volume identity but does not return it to the
+renderer. The renderer-facing `targetVolumeId` is replaced with the existing
+one-use selection token. A shared `2.3.0` engine-version constant is checked
+against the bundled manifest. Focused controller/XML/manifest tests passed
+30/30; the full main suite passed 76/76; the TypeScript/Electron production build
+passed; and the capture-disabled mock-only Windows UI smoke passed 42
+assertions. The normal screenshot path returned local compositor
+`UnknownVizError`, so no screenshot evidence is claimed. Runtime is still disabled and the agent is
+not connected. Fresh Windows Rust checks passed: benchmark-worker 24 (2 CI or
+process-fixture tests ignored), core 20, ext-reader 16, workspace fmt,
+warning-denying Clippy, and locked workspace release build. Agent tests were
+not run as a full suite because they include live-device probes; filtered pure
+agent tests passed (benchmark protocol 7, volume eligibility 16, storage
+identity 7). The CI-only DiskSpd/delete-on-close compatibility job, production
+lease/dispatch/cancellation integration, packaging acceptance, and user-run
+physical Windows 11 tests remain open. No DiskSpd process or physical device
+was exercised.
+
+## Current P2.5 status — DiskSpd lease sharing blocker (2026-10-20)
+
+PR #53 remains a draft at `cf2f3da7196b5251fd25ce1d4f1028274fe2d103`. GitHub CI (`39458367888`) and Windows Electron UI preview (`39458367924`) pass; the read-only DiskSpd compatibility workflow (`39458367882`) fails at `xml-integration` with `ERROR_SHARING_VIOLATION (32)`. The exact pinned v2.3 source opens an existing target with `FILE_SHARE_READ | FILE_SHARE_WRITE`, omitting `FILE_SHARE_DELETE`.
+
+Local Windows Win32-only disposable-file probes reproduced the conflict and verified the proposed matrix: an ordinary owner handle with read/write access and `FILE_SHARE_READ | FILE_SHARE_WRITE` (no DELETE access/share) permits a DiskSpd-shaped open; DELETE opens fail with error 32 while either handle remains; after both handles close, an exclusive DELETE handle can set disposition and remove the file. No DiskSpd executable, physical disk inventory, or physical-volume workload ran locally. The unknown-identity uniqueness test passed (1/1); the Job Object process tests passed (12, one fixture ignored). Those code-review findings are already addressed in the current branch: incomplete identity sets fail closed, and child creation assigns the process to the kill-on-close Job Object before resuming it.
+
+The approved implementation plan explicitly says to stop integration on this incompatibility and obtain written approval before replacing it with a protected exact-object crash-recovery journal. Draft proposal documents are ready in `docs/decisions/0004-p2-5-scratch-recovery-journal.md`, `docs/superpowers/specs/2026-10-20-p2-5-scratch-recovery-journal.md`, and `docs/superpowers/plans/2026-10-20-p2-5-scratch-recovery-journal.md`. Until approved, keep `BENCHMARK_RUNTIME_ENABLED = false`, leave benchmark UI controls disabled, and do not integrate the proposed lifecycle.
+
+---

@@ -58,3 +58,42 @@ USB köprülerinin model/kapasite/sector metadata’sı farklılık gösterebili
 - `CompareStorageDuids` Microsoft belgelerinde Windows driver DDI sayfasındadır: <https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/storduid/nf-storduid-comparestorageduids>.
 - Electron güvenlik rehberi dar preload API’si ve IPC sender doğrulamasını önerir: <https://www.electronjs.org/docs/latest/tutorial/security>.
 - Rufus ve balenaEtcher hedef disk görünürlüğünü model/kapasite gibi bilgilerle destekler; bu, kalıcı fiziksel kimlik kanıtı değildir: <https://github.com/pbatard/rufus/blob/3e696ab19010d7459c31537684522c98ba6a84a9/src/drive.c>, <https://github.com/balena-io/etcher/blob/bfcfafd32e3628fccf924c8d17fcdb56e4ade989/lib/gui/app/components/target-selector/target-selector.tsx>.
+
+## 2026-10-20 onaylı ek — salt okunur volume envanteri ve uygunluk
+
+Durum: Kullanıcı tasarımı onayladı; uygulama ve doğrulama sürüyor. Bu ek, yukarıdaki disk özeti tasarımını volume envanteriyle genişletir ve volume/seri numarası kapsamı hakkındaki çelişen önceki cümleleri bu özellik için geçersiz kılar.
+
+### Kapsam
+
+Windows volume metadata’sı salt okunur olarak envantere eklenir. Agent birimi dosya sistemi, bağlama kökü, boş/toplam alan, yazma-koruma durumu ve fiziksel bölüm eşlemesiyle değerlendirir. Uygunluk yalnızca daha sonraki, ayrı onaya ve güvenlik kapılarına tabi P2.5 dosya tabanlı benchmark hazırlığı için ön kontroldür; burada benchmark başlatılmaz ve fiziksel disk üzerinde hiçbir değişiklik yapılmaz.
+
+### Kimlik ve gizlilik
+
+Agent, `StorageDeviceIdProperty` yanıtını sıkı boyut/ofset/sayı sınırlarıyla ayrıştırır. Yalnız aygıtla ilişkilendirilmiş EUI-64, FC-PH name ve SCSI name string tanımlayıcıları kimlik adayıdır. Bunlar yoksa veya özellik desteklenmiyorsa `StorageDeviceDescriptor` seri numarası son çare olarak alınır ve baş/son boşlukları temizlenip ASCII büyük harfe dönüştürülür. Bozuk descriptor kimliği geçersiz kılar; sessizce zayıf bir değere düşülmez. Vendor, port, target ve grup kimlikleri kullanılmaz. Windows DUID özelliği bu tasarımın girdisi değildir.
+
+Ham tanımlayıcılar, seri numarası, PnP path, instance ID, geçici device number ve HANDLE agent dışına çıkmaz. Electron ana süreci her servis örneğinde rastgele 32 baytlık anahtar üretir ve bunu yalnız özel agent’ın stdin isteğinde 64 küçük harfli hex karakteri olarak verir. Agent, tür-ayrımlı kanonik kimlik baytlarından HMAC-SHA256 üretir. Yanıttaki `identityHash` ya 64 küçük harfli hex ya da `null` olur. Bu hash aynı uygulama süreci içindeki envanter ile seçim kaydını bağlayan gizlilik amaçlı parmak izidir; agent veya çalıştırılabilir dosya kimlik doğrulaması değildir. Anahtar diske yazılmaz ve renderer’a verilmez.
+
+Agent özel protokolü v3’tür; istek `protocolVersion`, `requestId`, sabit `inspectPhysicalDisks` işlemi ve `identityKey` alanlarından oluşur. Ana süreç tam alan listesini, hash biçimini ve her eligible volume’un `diskOrdinal` değerine karşılık gelen hazır disk için hash bulunmasını doğrular. Renderer’a giden kamu envanteri v2 olarak kalır ve disk alanlarından `identityHash` çıkarılır. Renderer’a ham kimlik veya hash verilmez.
+
+PnP path/instance ID ve Windows disk numarası yalnız aynı taramada aygıtı bulup volume extent’ini bağlamak içindir; kalıcı hedef sayılmaz. Volume’un diski için kimlik yoksa `identity_unavailable`, taramadaki iki diskin kararlı tanımlayıcı kümeleri bir veya daha fazla kimlik değerini paylaşıyorsa `ambiguous_identity` sonucu verilir. Benzersizlik yalnız taranan bütün disklerin kimliği okunabildiğinde kanıtlanabilir; başka bir diskin envanter veya kimlik sorgusu başarısızsa aday volume `identity_unavailable` ile reddedilir. Her iki durumda eligible false kalır. Yenileme önceki seçim token’larını temizler; yeni token, doğrulanmış kimlik hash’i de dahil yalnız ana süreçte tutulan seçim kaydına bağlanır.
+
+### Uygunluk koşulları
+
+Bir volume ancak aşağıdaki koşulların tümü doğrulanırsa ön kontrolde eligible olabilir:
+
+- Windows sistem volume’u olmadığı bilinir; tek ve geçerli sürücü harfi kökü vardır.
+- Aygıt türü fixed veya removable; dosya sistemi NTFS, ReFS, exFAT, FAT veya FAT32’dir ve volume read-only değildir.
+- Toplam/boş alan bilgisi geçerlidir; toplam alan sıfır değildir ve boş alan en az 2 GiB’dir.
+- Tek, pozitif uzunluklu ve taşmasız extent’i tam olarak bir tarama diskiyle eşleşir; eşleşme sistem diskinde değildir ve extent kapasite içindedir.
+- Disk kimliği mevcuttur ve tarama boyunca benzersizdir; disk boot bölümü içermez.
+- Extent tam olarak bir bölümün içindedir; bölüm korumalı değildir, temel veri bölümüdür ve disk düzeni Raw değildir.
+
+Bilinmeyen, bozuk, yinelenen veya çelişkili veride ilgili volume uygun sayılmaz. Kullanıcıya neden kodu gösterilir; güvenli varsayılan eligible false’tur.
+
+### Kabul doğrulaması ve açık sınırlar
+
+Unit testler descriptor sınırlarını, seri fallback’ini, yinelenen kimliği, kimlik yokluğunu, HMAC sabit vektörünü, anahtar değişince hash’in değişmesini, protokol v3 allowlist’ini, renderer’a hash sızmamasını ve token’ın kimliğe bağlanmasını kapsar. Bu otomatik testler gerçek donanım uyumluluğunu kanıtlamaz. Test koşumu gerçek disk envanteri sorgulamaz; USB/NVMe/SATA, hotplug, BitLocker ve 512e/4Kn kabulünü kullanıcı kendi Windows 11 cihazlarında yapar.
+
+Bu ek fiziksel disk yazma/formatlama/onarma, raw-sector okuma, mount, yükseltme, benchmark süreci, kullanıcı rızası veya üretim hedef yetkisi açmaz. HMAC ve seçim token’ı tek başına bu yetkilerden hiçbirini vermez.
+
+Ek kaynaklar: Microsoft [storage property IDs](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ne-winioctl-storage_property_id), [`STORAGE_DEVICE_ID_DESCRIPTOR`](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_device_id_descriptor), [`STORAGE_IDENTIFIER`](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddstor/ns-ntddstor-_storage_identifier), [identifier type](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddstor/ne-ntddstor-storage_identifier_type), [`STORAGE_DEVICE_DESCRIPTOR`](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_device_descriptor) ve [CNG HMAC](https://learn.microsoft.com/en-us/windows/win32/seccng/creating-a-hash-with-cng).

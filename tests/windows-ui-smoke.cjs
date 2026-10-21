@@ -16,6 +16,8 @@ fs.mkdirSync(output, { recursive: true });
 const report = { platform: process.platform, screenshots: [], skippedScreenshots: [], assertions: [], errors: [] };
 let windowRef;
 let inventoryRequests = 0;
+let imageOpenRequests = 0;
+let imageExportRequests = 0;
 const watchdog = setTimeout(() => fail(new Error("Windows UI smoke timed out after 90 seconds")), 90_000);
 
 function check(condition, message) {
@@ -95,7 +97,7 @@ function bridge() {
   ipcMain.handle("partition11:read-only-disk-inventory", () => {
     inventoryRequests += 1;
     return {
-      protocolVersion: 1,
+      protocolVersion: 2,
       status: "ok",
       scannedAt: "2026-10-19T12:00:00.000Z",
       disks: [{
@@ -107,10 +109,56 @@ function bridge() {
         busType: "usb",
         partitionStyle: "gpt",
         partitionCount: 2
+      }],
+      volumes: [{
+        ordinal: 1,
+        mountPoint: "E:\\",
+        driveType: "removable",
+        fileSystem: "exFAT",
+        totalBytes: "64000000000",
+        availableBytes: "32000000000",
+        readOnly: false,
+        eligible: false,
+        eligibilityReason: "system_volume_unknown",
+        diskOrdinal: null,
+        partitionNumber: null,
+        selectionToken: null
       }]
     };
   });
-  ipcMain.handle("partition11:titlebar-theme", (_, theme) => {
+  ipcMain.handle("partition11:image-open", () => {
+    imageOpenRequests += 1;
+    return {
+      status: "opened",
+      sessionId: "smoke-session",
+      imageName: "fixture.ext4",
+      directoryId: "smoke-root",
+      entries: [
+        { id: "smoke-folder", name: "docs", kind: "directory", sizeBytes: "0" },
+        { id: "smoke-file", name: "hello.txt", kind: "file", sizeBytes: "5" }
+      ],
+      nextPageToken: null
+    };
+  });
+  ipcMain.handle("partition11:image-list-directory", (_event, sessionId, directoryId) => {
+    if (sessionId !== "smoke-session" || directoryId !== "smoke-folder") {
+      return { status: "error", error: "session_expired" };
+    }
+    return {
+      status: "ok",
+      entries: [{ id: "smoke-nested-file", name: "nested.txt", kind: "file", sizeBytes: "10" }],
+      nextPageToken: null
+    };
+  });
+  ipcMain.handle("partition11:image-next-page", () => ({ status: "error", error: "session_expired" }));
+  ipcMain.handle("partition11:image-export-file", (_event, sessionId, fileId) => {
+    if (sessionId !== "smoke-session" || fileId !== "smoke-file") {
+      return { status: "error", error: "session_expired" };
+    }
+    imageExportRequests += 1;
+    return { status: "exported", bytes: "5" };
+  });
+  ipcMain.handle("partition11:image-close-session", () => undefined);  ipcMain.handle("partition11:titlebar-theme", (_, theme) => {
     if (!["light", "dark"].includes(theme)) throw new Error("Invalid theme");
     windowRef.setTitleBarOverlay({
       color: theme === "dark" ? "#1b2028" : "#eef2f7",
@@ -154,7 +202,29 @@ async function main() {
   check(await js("document.querySelectorAll('.inventory-row button').length === 0"), "Real inventory rows are not selectable controls");
   check(await js("document.querySelector('[data-testid=\"inventory-disk-1\"]')?.textContent.includes('USB')"), "Inventory displays the mock USB bus independently");
   check(await js("document.querySelector('.inventory-row')?.textContent.includes('64.0 GiB')"), "Disk capacity is rendered from the allowlisted metadata");
+  check(await js("document.querySelector('[data-testid=\"inventory-volume-1\"]')?.textContent.includes('E:\\\\')"), "Sanitized mock volume metadata is rendered");
+  check(await js("document.querySelector('[data-testid=\"inventory-volume-1\"]')?.textContent.includes('Windows sistem diski doğrulanamadı')"), "Unverified system-disk mapping stays ineligible");
   await snap("02-readonly-inventory");
+  await js("document.querySelector('.view-switch button:nth-child(3)').click()");
+  await waitUntil("document.querySelector('h1')?.textContent === 'EXT4 imajlarını incele'");
+  check(imageOpenRequests === 0, "Opening the image view does not start image file access");
+  await js("document.querySelector('.image-card-heading .inventory-refresh').click()");
+  await waitUntil("Boolean(document.querySelector('.image-entry-list'))");
+  check(imageOpenRequests === 1, "Only an explicit image-open action requests an image");
+  check(await js("!document.body.textContent.includes('D:\\\\\\\\private')"), "Image host paths are not rendered");
+  await js("document.querySelector('.image-entry-name').click()");
+  await waitUntil("document.querySelector('.image-breadcrumbs')?.textContent.includes('docs')");
+  check(await js("document.querySelector('.image-entry-list')?.textContent.includes('nested.txt')"), "Image browser lists a selected directory through an opaque token");
+  await js("document.querySelector('.image-breadcrumbs button').click()");
+  await waitUntil("document.querySelector('.image-entry-list')?.textContent.includes('hello.txt')");
+  await js("document.querySelector('.image-export-button').click()");
+  await waitUntil("document.querySelector('.image-message[role=status]')?.textContent.includes('dışa aktarıldı')");
+  check(imageExportRequests === 1, "Image file export uses the main-process save dialog bridge");
+  await snap("03-image-browser");
+  windowRef.setSize(520, 780);
+  await new Promise(resolve => setTimeout(resolve, 350));
+  check(await js("document.documentElement.scrollWidth <= window.innerWidth + 1"), "Image browser has no horizontal overflow at narrow width");
+  windowRef.setSize(1460, 980);
 
   await js("document.querySelector('.view-switch button:nth-child(2)').click()");
   await waitUntil("Boolean(document.querySelector('[data-testid=\"format-workspace\"]'))");
@@ -166,24 +236,24 @@ async function main() {
   check(!(await js("Boolean(document.querySelector('.field-error'))")), "Default label passes validation");
   check((await js("document.querySelector('.partition-theme')?.dataset.theme")) === "light", "Light color scheme renders initially");
 
-  await snap("03-light-demo");
+  await snap("04-light-demo");
   await js("document.querySelector('[data-testid=\"disk-sample-sandisk\"]').click()");
   await waitUntil("document.querySelector('#selected-disk-heading')?.textContent === 'SanDisk Ultra'");
   check((await js("document.querySelector('.partition-head')?.textContent")).includes("FAT32"), "Selecting a sample disk updates the partition summary");
   await js("document.querySelector('[data-testid=\"advanced-settings-toggle\"]').click()");
   await waitUntil("document.getElementById('advanced-settings') !== null");
   check((await js("document.querySelector('[data-testid=\"advanced-settings-toggle\"]').getAttribute('aria-expanded')")) === "true", "Advanced controls announce expanded state");
-  await snap("04-advanced-sandisk");
+  await snap("05-advanced-sandisk");
 
   await js("document.querySelector('.theme-toggle').click()");
   await waitUntil("document.querySelector('.partition-theme')?.dataset.theme === 'dark'");
   check(await js("getComputedStyle(document.querySelector('.partition-theme')).colorScheme === 'dark'"), "Dark theme has matching browser color scheme");
-  await snap("05-dark-reference");
+  await snap("06-dark-reference");
 
   windowRef.setSize(860, 750);
   await new Promise(resolve => setTimeout(resolve, 400));
   check(await js("document.documentElement.scrollWidth <= window.innerWidth + 1"), "Compact desktop layout has no horizontal overflow");
-  await snap("06-narrow-desktop");
+  await snap("07-narrow-desktop");
 
   windowRef.setSize(520, 780);
   await new Promise(resolve => setTimeout(resolve, 400));
@@ -209,6 +279,8 @@ async function main() {
   check(await js("Array.from(document.querySelectorAll('.bench-value')).every(cell => cell.textContent.includes('—'))"), "Every unmeasured score stays blank");
   check(await js("document.querySelector('[data-testid=benchmark-start]').disabled"), "Benchmark Start is disabled in P2.5A");
   check(await js("document.querySelector('[data-testid=benchmark-cancel]').disabled"), "Benchmark Cancel is disabled in P2.5A");
+  check(await js("document.querySelector('[data-testid=benchmark-impact-estimate]').textContent.includes('3,5 GB') && document.querySelector('[data-testid=benchmark-impact-estimate]').textContent.includes('35 saniye')"), "Write impact disclosure includes the one-repeat byte and time bounds");
+  check(await js("!document.querySelector('.benchmark-settings select') && document.querySelector('[data-testid=benchmark-repetitions]')?.textContent === '1'"), "A consent covers exactly one fixed benchmark run");
   check(await js("document.body.textContent.includes('Örnek veri')"), "Benchmark target is marked synthetic");
   await js("document.querySelector('.theme-toggle').click()");
   await waitUntil("document.querySelector('.partition-theme')?.dataset.theme === 'light'");

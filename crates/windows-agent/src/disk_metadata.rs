@@ -2,7 +2,8 @@
 
 use crate::disk_discovery;
 pub(crate) use crate::metadata_query::SectorSizes;
-use crate::scan_identity::ScanGeneration;
+use crate::pnp_notifications::DiskNotifications;
+use crate::scan_identity::{ScanGeneration, ScanSnapshot};
 use partition11_core::windows_layout::DriveLayout;
 use std::fmt;
 use std::time::{Duration, Instant};
@@ -46,7 +47,52 @@ pub(crate) struct DiskMetadata {
     pub capacity_bytes: Result<u64, MetadataError>,
     pub sectors: Result<SectorSizes, MetadataError>,
     pub bus_type: Result<Option<u32>, MetadataError>,
+    pub stable_identity: Result<crate::storage_identity::StorageIdentity, MetadataError>,
     pub partition_layout: Result<DriveLayout, MetadataError>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ReadOnlyInventory {
+    pub disks: Vec<ProbeOutcome>,
+    pub volumes: Vec<crate::volume_inventory::VolumeRecord>,
+}
+
+/// Keeps the PnP notification registration and its generation alive after a
+/// successful scan so a later scratch operation can reject hotplug changes.
+pub(crate) struct ScanGuard {
+    generation: ScanGeneration,
+    revision: u64,
+    snapshot: ScanSnapshot,
+    notifications: Option<DiskNotifications>,
+}
+
+impl ScanGuard {
+    pub(crate) fn generation(&self) -> ScanGeneration {
+        self.generation.clone()
+    }
+
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub(crate) fn ensure_current(&self) -> Result<(), MetadataError> {
+        if self.generation.revision() != self.revision {
+            return Err(MetadataError::IdentityChanged);
+        }
+        self.snapshot
+            .ensure_current()
+            .map_err(|_| MetadataError::IdentityChanged)
+    }
+
+    pub(crate) fn finish(mut self) -> Result<(), MetadataError> {
+        self.ensure_current()?;
+        self.notifications
+            .take()
+            .ok_or(MetadataError::IdentityChanged)?
+            .finish()
+            .map_err(|_| MetadataError::IdentityChanged)?;
+        self.ensure_current()
+    }
 }
 
 #[derive(Debug)]
@@ -114,13 +160,21 @@ impl fmt::Display for ScanError {
 
 /// Return provisional metadata only to the local agent, never to Electron.
 /// A later, independent SetupAPI pass rejects paths that disappeared.
-pub(crate) fn inspect_discovered_devices() -> Result<Vec<ProbeOutcome>, ScanError> {
+pub(crate) fn inspect_discovered_devices() -> Result<ReadOnlyInventory, ScanError> {
     inspect_discovered_devices_with_timeout(Duration::from_secs(30))
 }
 
 pub(crate) fn inspect_discovered_devices_with_timeout(
     timeout: Duration,
-) -> Result<Vec<ProbeOutcome>, ScanError> {
+) -> Result<ReadOnlyInventory, ScanError> {
+    let (inventory, guard) = inspect_discovered_devices_with_guard(timeout)?;
+    guard.finish().map_err(ScanError::Security)?;
+    Ok(inventory)
+}
+
+pub(crate) fn inspect_discovered_devices_with_guard(
+    timeout: Duration,
+) -> Result<(ReadOnlyInventory, ScanGuard), ScanError> {
     let deadline = Instant::now() + timeout;
     crate::metadata_query::reject_elevated_process().map_err(ScanError::Security)?;
     let generation = ScanGeneration::default();
@@ -147,6 +201,12 @@ pub(crate) fn inspect_discovered_devices_with_timeout(
         }
         results.push(result);
     }
+    let volumes =
+        crate::volume_inventory::inspect(&results, &generation, starting_revision, deadline)
+            .map_err(|error| match error {
+                MetadataError::TimedOut => ScanError::TimedOut,
+                other => ScanError::Security(other),
+            })?;
     remaining_scan_time(deadline)?;
     epoch.ensure_current().map_err(ScanError::Security)?;
     let after = disk_discovery::enumerate_disk_records().map_err(ScanError::Discovery)?;
@@ -161,9 +221,6 @@ pub(crate) fn inspect_discovered_devices_with_timeout(
     snapshot
         .validate(&after, &numbers)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
-    notifications
-        .finish()
-        .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
     remaining_scan_time(deadline)?;
     if generation.revision() != starting_revision {
         return Err(ScanError::Security(MetadataError::IdentityChanged));
@@ -171,8 +228,19 @@ pub(crate) fn inspect_discovered_devices_with_timeout(
     snapshot
         .validate(&after, &numbers)
         .map_err(|_| ScanError::Security(MetadataError::IdentityChanged))?;
-    generation.invalidate();
-    Ok(results)
+    let guard = ScanGuard {
+        generation,
+        revision: starting_revision,
+        snapshot,
+        notifications: Some(notifications),
+    };
+    Ok((
+        ReadOnlyInventory {
+            disks: results,
+            volumes,
+        },
+        guard,
+    ))
 }
 
 #[cfg(test)]
@@ -206,9 +274,13 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "enumerates and queries physical Windows disks; reserved for the user's manual hardware acceptance"]
     fn metadata_probe_stays_local_and_non_elevated() {
         match inspect_discovered_devices() {
-            Ok(entries) => assert!(entries.len() <= 256),
+            Ok(inventory) => {
+                assert!(inventory.disks.len() <= 256);
+                assert!(inventory.volumes.len() <= crate::volume_inventory::MAX_VOLUMES);
+            }
             Err(ScanError::Security(MetadataError::ElevatedProcess)) => (),
             Err(e) => panic!("unexpected native metadata error: {e}"),
         }

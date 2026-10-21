@@ -1,4 +1,155 @@
+# Current handoff — approved P2.5 scratch recovery (2026-10-21)
+
+The user approved ADR-0004, `docs/superpowers/specs/2026-10-20-p2-5-scratch-recovery-journal.md`, and its plan on 2026-10-21. Work is in `D:\Partition 11\.worktrees\readonly-disk-preview` on `feature/p2.5-volume-eligibility-policy`; changes remain local and uncommitted. `BENCHMARK_RUNTIME_ENABLED` is still false. Do not run DiskSpd locally, enumerate physical disks, benchmark a mounted volume, or merge; the user owns physical Windows 11 acceptance.
+
+Implemented: DiskSpd-compatible scratch sharing, protected user/SYSTEM ACLs, identity-bound cleanup after handles close, strict atomic journal records, no-clobber initial insert, monotonic lifecycle updates, recovery of validated interrupted temp records, and fail-closed startup recovery through the Windows agent. Electron main invokes recovery before creating the window and retries after a worker cleanup failure on a later inventory request. Agent output contains only a protocol version and one sanitized recovery status.
+
+Verified locally on 2026-10-21: Windows x64 Rust workspace tests passed (agent 122, worker 42, core 20, ext-reader 5, image integration tests 11; physical-device probes and three worker fixtures were ignored); rustfmt and strict Clippy passed; Electron main tests passed 81/81; `npm run build` passed; mock-only Electron UI smoke passed 42/42 assertions. New journal tests cover interrupted insert/update recovery, repeat recovery, invalid temp bytes/ACL, and duplicate IDs. The main-process recovery wrapper returned `clean` against an isolated temporary `LOCALAPPDATA`. An unsigned unpacked x64 preview was built at `release/p2.5-scratch-recovery-20261021-final/win-unpacked`; EXE SHA-256 `ACF10184D8997101B0BBFBC8EE25F3448DDF2815DA5B4B65A053A726213A6AAE`. Packaged agent SHA-256 matched its release build; DiskSpd v2.3, MIT license, manifest, and CycloneDX SBOM were present and matched the pinned manifest.
+
+Remaining before an end-to-end benchmark test build: the Rust benchmark process runner is not connected to the main controller, and `running` journal persistence plus drain-before-cleanup still need implementation. The current unsigned unpacked preview is reviewable but benchmark runtime remains disabled. Run fresh GitHub Actions including the pinned DiskSpd compatibility gate before production runner integration can be claimed complete. No physical-device gate is delegated to Codex.
+
+---
+
+# Güncel devam noktası — P2.5 güvenlik kapıları (20 Ekim 2026)
+## En yeni yerel doğrulama - P3/P9 (20 Ekim 2026)
+
+Windows x64 ext_image fuzz kampanyası 601 saniye sürdü ve exit 0 ile tamamlandı: 10.091 girdi, 1.306 coverage sayacı, 3.016 özellik, 138 yeni corpus girdisi, 1.034 MiB tepe RSS; crash veya timeout olmadı. İki e2fsprogs fixture kopyası kullanıldı, geçici corpus doğrulama sonrasında silindi.
+
+Derlenmiş x64 agent image-worker ve dist içindeki Electron main ReadOnlyImageInspectionService, temiz sentetik ext4 fixture üzerinde gerçek main-to-agent akışıyla denendi. İkisi de bilinen kök dizini listeledi, beklenen 36 baytı dışa aktardı ve mevcut hedefi ezmeyi reddetti; stage dosyası kalmadı ve kaynak fixture hash değeri değişmedi. Bu, Electron renderer/UI kabul testi değildir.
+
+Windows x64 agent CycloneDX 1.5 SBOM dosyası 11 bileşen içeriyor. Windows CI ile aynı PowerShell bileşen/lisans/kenar doğrulaması yerelde geçti: partition11-core, partition11-ext-reader ve rust-fs-ext4 v0.8.0 için MIT; bağımlılık grafiği agent to ext-reader to rust-fs-ext4 şeklinde.
+
+Branch için GitHub Actions çalışmadı. CI-only DiskSpd/delete-on-close uyumluluk kapısı açık; bu yüzden P2.5 üretim entegrasyonu ve runtime etkin değil. DiskSpd çalıştırılmadı, fiziksel disk sorgusu veya fiziksel test yapılmadı.
+
+P2.5 Task 1 yerel regresyon kapsamına junction root, captured file yolunun başka dosyayla değiştirilmesi ve FILE_ATTRIBUTE_REPARSE_POINT metadata reddi eklendi. Locked worker testleri 28 geçti / 3 ignored; tam workspace testleri agent 122, worker 28, core 20, ext-reader 16 olarak geçti. Workspace fmt, warning-denying Clippy ve locked release build başarılı.
+
+Process-exit cleanup probe açıkça çalıştırıldığında beklenen RED sonucunu verdi: mevcut lease, sahibi Drop çalıştırmadan çıkınca kalıyor. Test, Windows CI DiskSpd uyumluluk kapısı geçene kadar ignored. Runtime kapalı; DiskSpd veya fiziksel disk testi çalıştırılmadı.
+
+Kullanıcı P2.5 file-backed benchmark spec'ini onayladı. Değişiklikler yerel
+`D:\Partition 11\.worktrees\readonly-disk-preview` worktree'sinde; commit,
+push, PR veya merge yapılmadı. Agent'a bağlanmamış, katı alanlı benchmark
+istek parser'ı; tek-run HMAC zarfı; taze eligible NTFS hedefi, bölüm eşlemesi,
+kimlik eşsizliği ve boş alan doğrulaması eklendi. Electron main'e tek-run
+consent denetleyicisi ile tipli start/cancel IPC eklendi. Main worker raporunu
+tam alan, hedef HMAC, profil/yön, sabit süre, cache politikası, DiskSpd sürümü
+ve ölçüm sınırlarıyla doğruluyor; renderer'a HMAC yerine tek kullanımlık
+seçim token'ı veriyor. Runtime gate açıkça `false`; UI Start/Cancel hâlâ kapalı
+ve agent/worker çalıştırılmıyor.
+
+Güncel doğrulama: main testleri 76/76; `npm run build` başarılı;
+`PARTITION11_UI_SMOKE_SKIP_CAPTURE=1 npm run test:ui:win` 42 mock-IPC
+assertion ile geçti. Normal screenshot yolu yerel compositor'dan
+`UnknownVizError` aldı; screenshot kanıtı yok. Yeni hedefli Windows Rust
+kontrolleri başarılı: benchmark-worker 24 geçti / 2 CI veya process-fixture
+testi ignored; core 20, ext-reader 16; workspace fmt, warning-denying Clippy
+ve locked release build geçti. Agent testleri live-device probe içerdiğinden
+tam paket olarak çalıştırılmadı; filtreli saf benchmark-protocol 7, volume
+eligibility 16 ve storage-identity 7 testi geçti. DiskSpd'nin delete-on-close scratch ile uyumluluk testi
+yalnızca Windows CI'da çalışacak; branch için CI henüz çalışmadı. Üretim scratch
+lifecycle, agent dispatch, process-tree cancel/cleanup ve native XML-to-report
+entegrasyonu açık. DiskSpd, gerçek volume envanteri, fiziksel test veya yazma
+çalıştırılmadı.
+Güncel 2026-10-20 denetimi: `npm audit --omit=dev --audit-level=moderate`
+sıfır production bulgusu verdi; full npm graph'ta yalnız belgelenmiş
+GHSA-hp3w-g68c-fv3c için sekiz Moderate dev-only kayıt ve High/Critical
+bulgu yok. RustSec `cargo audit --file Cargo.lock` 31 crate
+bağımlılığında bulgu vermedi. Ayrı P3 fixture fuzz koşusu 185 saniyede
+371 yürütme, 1.226 coverage counter ve 1.897 feature ile tamamlandı;
+crash olmadı. Yerel DiskSpd executable SHA-256'si manifestle eşleşiyor.
+Bunlar Windows CI kapısını kapatmıyor; P2.5 ve kullanıcı Windows 11
+kabulü tamamlanmadı.
+
+Önceki aday ve geçmiş checkpoint'ler aşağıda korunmuştur.
+
+---
+
+# Yerel devam noktası — P3 bağımsız fixture ve Windows test adayı (20 Ekim 2026)
+
+Yeni unsigned x64 test paketi: release/Partition-11-Windows-x64-p3-final-20261020.zip, 163,956,723 bayt, SHA-256 53431df71ad04c4d8f7822bb761139afc80ab827bab83f3f28f9706479a4b699. ZIP içindeki 74 girdinin tümü açılarak doğrulandı. Paket Windows x64 uygulamasını, read-only agent'ı ve hedefe özgü CycloneDX 1.5 agent SBOM'ını içeriyor; imzasızdır. Agent capability çıktısı image ve fiziksel disk metadata incelemesini açık, iki yazma kabiliyetini kapalı gösteriyor.
+
+Yerel doğrulama: Rust fmt, strict Clippy ve tüm workspace testleri geçti (agent 113/2 donanım testi ignored, benchmark-worker 15/1 process fixture ignored, core 20, ext-reader 16); npm build; main testleri 60/60; mock Windows UI smoke exit 0. Windows libFuzzer 30 saniyelik smoke 62 çalıştırma ve 1,205 coverage özelliğiyle crash olmadan tamamlandı. RustSec cargo-audit yerel cache'den 1,338 advisory yükleyip lockfile için bulgu bildirmedi; crates.io index yenilemesi yapılamadı. Güncel npm advisory scan henüz doğrulanmadı. Bu branch için GitHub Actions çalıştırılmadı.
+
+Ext4 fixture'ları e2fsprogs 1.47.3'ten bağımsız üretildi. Dirty/corrupt görüntüler, değişmeyen kaynak imaj, 128 deterministik metadata mutasyonu ve staged no-overwrite export testleri geçti. Hiçbir fiziksel disk envanteri, benchmark veya yazma çalıştırılmadı. P2.5 production worker/consent bağlantısı, host-process crash sonrası stage dosyası politikası, GitHub workflow doğrulaması ve uzun fuzz kampanyası açık; format/repair/resize/mount kapalı. Fiziksel Windows 11 kabulünü kullanıcı yapacak.
+
+---
 # Partition 11 — Oturum devir kaydı ve kaldığımız yer (2026-10-19)
+
+## Latest local checkpoint - P2.5B impact disclosure and fresh candidate (2026-10-20)
+
+The benchmark preview now shows a repeat-sensitive worst-case write-byte/runtime estimate. UI and workload planning use the same rate/time limits. UI size is fixed at 1 GiB, matching ScratchLease. This is disclosure only; it is not consent, and Start/Cancel remain disabled. Production worker integration and all remaining safety gates are open.
+
+`npm run build` passed, main tests passed 47/47, and the mock-IPC Electron UI smoke passed 36 behavioral assertions. Local screenshot capture was skipped after Electron returned `UnknownVizError`; 11 screenshots were skipped. No hardware inventory or write workload was run in this step.
+
+Fresh unsigned x64 package: `release/Partition-11-Windows-x64-p2.5b8-impact-utf8-20261020.zip`, 159,166,921 bytes, SHA-256 `5ee8c7c83c6533a06cffa6190e60ead14cd1352a5eb9f13cd910d87269171f54`; 74 ZIP entries passed CRC. The package contains the agent and CycloneDX SBOM. Static agent capabilities report all inspection/write flags false. Previous candidate archives remain in place. Physical Windows 11 acceptance remains the user's test gate.
+
+## YEREL DEVAM NOKTASI — P0 denetimleri ve P2.5B.4–B.7 donanım öncesi işler (20 Ekim 2026)
+
+Çalışma dalı `feature/p2.5-volume-eligibility-policy`; yerel `origin/main`
+referansından üç commit ileride. WMI/CIM drive-letter → partition eşlemesi
+sınırlı çalışıyor ve bağımsız Windows disk layout verisiyle doğrulanıyor.
+Sistem/boot/korunan bölüm, belirsiz mount/extent, desteklenmeyen dosya sistemi,
+yetersiz alan ve kararlı kimlik yokluğu uygunluğu kapatıyor. Volume handle, raw
+sector, elevation ve canlı benchmark yok.
+
+Özel agent protokolü v3: ana süreçte rastgele 32 baytlık HMAC anahtarı, yalnız
+stdin isteğinde agent'a gider. Agent ham kimliği dışarı vermez; eşleşmeyi
+64-küçük-harf hex HMAC-SHA256 ile döndürür. Ana süreç hash'i doğrular, yalnız
+RAM'deki seçim token'ına bağlar ve renderer envanterinden çıkarır. Eksik veya
+diskler arasında çakışan kimlik fail-closed olur. Bu mekanizma agent binary
+kimlik doğrulaması veya uygulama süreçleri arasında kalıcı kimlik değildir.
+
+Yerel P2.5B.5, crates/benchmark-worker içinde Windows-only ScratchLease yapı taşını ekledi. Üretim giriş noktası yalnızca mounted volume root kabul eder; böylece keyfi klasör üst dizinlerinin yönlendirilmesiyle oluşabilecek path yarışını kapatır. Hedefte kriptografik rastgele adla tek bir CREATE_NEW dosyasını doğrudan volume root altında atomik oluşturur; dönen file handle'dan volume serial ve 128-bit file ID alır, reparse/multiple-link durumlarını reddeder, boyut sınırını doğrular ve yalnızca bu exact file handle'ı üzerinden siler. CREATE_NEW sonrası kimlik/volume doğrulaması başarısız olursa da tam oluşturulan dosya handle üzerinden silinmeye çalışılır. Üretim yolunda klasör oluşturulmaz veya silinmez. Testlerde geçici klasör kökü yalnızca test içi yardımcıyla kullanılabilir. Bu library Electron'a, agent IPC'ye veya DiskSpd'ye bağlı değil. Windows temp klasör testleri 4/4; fiziksel disk/benchmark testi yapılmadı. Microsoft FILE_STANDARD_INFO ve FILE_DISPOSITION_INFO BOOLEAN alanlarının 1 bayt olduğu SDK tanımıyla eşleştirildi.
+
+20 Ekim 2026 yerel doğrulaması: agent 104 geçti / 2 canlı-cihaz testi ignored,
+benchmark-worker 15 geçti / 1 süreç ağacı fixture'ı ignored, core 19 geçti.
+Workspace Clippy ve Windows x64 release build'i; TypeScript/renderer build ve
+44 main testi de geçti. Varsayılan testlerden önceki hatalı çalıştırma, SetupAPI
+sayımını ve tam metadata envanter probe'unu başlattı; probe yaklaşık 6 saniyede
+timeout oldu. Yazma veya benchmark yoktu; çıktı tamamlanan read-only isteği
+sayısını göstermiyor. İki canlı-cihaz testi artık default suite'te ignored;
+GitHub Windows VM yalnızca disk handle açmayan SetupAPI sayım testini ayrıca
+çalıştıracak. Kullanıcının fiziksel Windows 11 kabul testi yapılmadı.
+
+Typecheck/Electron build ve 44 main-process testi geçti. UI smoke statik örnek
+veri kullanıyor; gerçek envanter çağrısı Electron IPC stub'ında karşılanır ve
+Windows donanımına gitmez. Yeni paketleme adayı henüz üretilmedi.
+
+Test adayı: `release/Partition-11-Windows-x64-p2.5b4-identity-electron-builder-20261020.zip`
+(176,440,032 byte; x64; 73 girdili ZIP CRC geçti), SHA-256
+`82a3f6830b6baf2c4e6744703171173c73bb7ea30d9503a04e07cc4834b28911`. Eşlik eden
+`.sha256` sidecar mevcut. EXE/ASAR/agent hashleri `docs/PLAN.md` içindeki yerel
+checkpoint'te kayıtlı. Build imzasız ve unpacked preview'dir.
+
+20 Ekim 2026'da bağlı GitHub okuma API'siyle canlı durum yenilendi: `main`
+`130868dbaf60a3dfa71f62f5d5086c985d792cc6`; CI, Windows UI ve DiskSpd
+koşuları 3/3 başarılı; açık PR yok. P0/P1/P2/P2.5 issue'ları açık. Bu yerel
+dal için PR veya merge yok. Yerel değişiklikler henüz yeni GitHub koşularında
+doğrulanmadı. Kullanıcının fiziksel Windows 11 testi yapılmadı; bu kullanıcı
+kapısıdır.
+
+P0'da production npm Moderate ve tam npm High/Critical denetim kapıları,
+sabitlenmiş RustSec `cargo-audit` lockfile job'u ve sabitlenmiş CycloneDX
+generator'ı eklendi. Yerel RustSec audit bulgusuz geçti; `Cargo.lock` yalnızca
+üç yerel workspace paketini içeriyor. `cargo-cyclonedx` 0.5.9 ile geçici
+workspace kopyasında target-specific SBOM üretimi doğrulandı; Windows preview
+workflow'u SBOM'ı doğrulayacak, uygulama ZIP'ine koyacak ve ayrı artifact
+olarak yükleyecek. CI sonucu henüz bekleniyor. Full npm graph'taki tek Moderate
+advisory, patch'i bulunmayan dev-only `sprintf-js` yolu için geçici istisna
+`docs/SECURITY_DEPENDENCY_EXCEPTIONS.md` içinde kayıtlı; production npm audit
+temiz.
+
+P2.5B.5, `crates/benchmark-worker` içinde volume-root-only scratch lease
+ekledi. P2.5B.6, resmi DiskSpd v2.3 arşiv hash'ini ve amd64/XML sürüm bilgisini
+CI-only manifestte sabitledi; Microsoft MIT bildirimi korundu ve paket dışı
+kalma regresyon testi eklendi. P2.5B.7'nin Windows Job Object process-tree
+supervisor primitive'i de yerel olarak mevcut. Üretim worker'ına bağlama, açık
+yazma rızası, metrik doğrulaması ve kullanıcının donanım kabulü açık. Benchmark
+ve disk yazma kapalı.
+
+Sıradaki iş: yeni CI kontrollerini doğrulamak, consent policy ve supervisor
+bağlantı sınırlarını tamamlamak; bu kapılar ve kullanıcının donanım kabulü
+olmadan benchmark launch, ham disk yolu veya fiziksel yazma eklenmeyecek.
+---
 
 ## EN YENİ MERGED CHECKPOINT — P2.5B.3 korunan bölüm türleri
 
@@ -855,3 +1006,93 @@ ZIP integrity and the hashes of `Partition 11.exe`, `resources/app.asar`, and
 package. It remains a local, unmerged preview; GitHub CI and the user's real
 Windows 11 USB/NVMe/SATA, hotplug, BitLocker and 512e/4Kn acceptance remain
 open.
+
+## 2026-10-19 — pinned Windows x64 candidate
+
+Rebuilt the local P2.5B.4 preview from source commit `3ee9d47` with the CI-pinned
+Node.js 24.21.0 / npm 11.19.0 and Rust 1.99.1 toolchain. The unsigned,
+unpacked x64 candidate is `release/Partition-11-Windows-x64-p2.5b4-f24fabc-node24.21.zip`
+(207,806,797 bytes), SHA-256
+`C08E98102F1F78AB532F41F588E2376FBF2F49CCCA0E81E7695243990D401C79`.
+All 73 ZIP entries passed Python `zipfile.testzip()`. The application EXE is
+x64; the packaged agent `capabilities` command reports physical/image inspection
+and both write capabilities disabled. App, agent and `app.asar` SHA-256 values
+are recorded in `docs/PLAN.md`. No inventory query or physical-device test was
+run. This is an unsigned directory-preview candidate, not a signed installer or
+release; the user's physical Windows 11 acceptance remains pending.
+
+## 2026-10-20 — P2.5B.7 internal process supervisor checkpoint
+
+The local feature worktree is `D:\Partition 11\.worktrees\readonly-disk-preview` on `feature/p2.5-volume-eligibility-policy`, based on `73742175a65de21e0622bb2a9cf012f93a4e8102`. The internal Windows benchmark-worker now uses `PROC_THREAD_ATTRIBUTE_JOB_LIST` to create the child suspended inside a kill-on-close Job Object, then resumes it only after successful creation. It inherits only explicit NUL/stdout/stderr handles, bounds captured output, enforces cancellation/deadline checks, terminates the full job on abort, and waits for descendants to drain. Unverifiable drain is fail-closed as `Undrained`. Independent review also led to a fail-closed volume-identity rule: if any scanned disk's identity is unavailable, uniqueness cannot be claimed and the candidate remains ineligible.
+
+Local verification: Windows `cargo fmt --all -- --check`; `cargo test --locked -p partition11-benchmark-worker -- --test-threads=1` (15 passed, one ignored helper); all `volume_eligibility` agent tests (16 passed); warning-denying Clippy for both affected crates; `cargo build --locked --workspace --release`; and `npm run test:main` (44 passed). The existing P2.5B.4-B.6 changes remain uncommitted in this same worktree; no commit, push, PR, or merge was performed.
+
+This checkpoint does not connect the primitive to Electron/agent IPC, add a production DiskSpd command constructor, package DiskSpd, authorize a volume write, or complete the consent/lease/result-validation gates. Tests used local harmless process fixtures only; no physical volume access, DiskSpd workload, or Windows 11 hardware acceptance was run. Scratch-file ACL/privacy and crash-recovery policy, CI integration, and the user's hardware acceptance remain open gates.
+## 2026-10-20 — P2.5 main result-validation checkpoint
+
+Continue in `D:\Partition 11\.worktrees\readonly-disk-preview` on
+`feature/p2.5-volume-eligibility-policy`. The approved plan remains in progress
+and all local changes remain uncommitted. Main now validates worker result
+envelopes/reports against consented volume identity, fixed profile/direction,
+DiskSpd version, cache policy, 1 GiB target, fixed timings, canonical timestamp,
+and bounded measurements. The keyed identity is removed from the renderer
+projection and replaced by the consumed one-use selection token. Invalid
+results and uncertain worker failures require cleanup and block another run.
+
+Fresh checks: `npm run test:main` passed 76/76; `npm run build` passed; and
+`PARTITION11_UI_SMOKE_SKIP_CAPTURE=1 npm run test:ui:win` passed 42 mock-IPC
+assertions. The ordinary screenshot path returned local compositor
+`UnknownVizError`; no screenshot evidence is claimed. The feature runtime remains
+disabled and no benchmark worker is dispatched. The CI-only DiskSpd
+delete-on-close test has not run, so do not connect or enable the production
+worker until that gate and the remaining lease/agent/cancellation/cleanup
+checks pass. No physical device or DiskSpd workload was used. Do not commit,
+push, create a PR, merge, or run physical-device tests.
+
+## 2026-10-20 — P2.5 internal volume-root binding
+
+The fresh agent volume scan now carries the enumerated canonical volume-GUID
+root only inside `VolumeRecord`. Benchmark target revalidation rejects missing
+or malformed roots and returns `ValidatedTarget.volume_guid_root` for later
+scratch creation; the public volume serializer still omits it. Windows agent
+tests passed 122 with two physical-device probes ignored; the focused benchmark
+protocol and inventory protocol tests passed 8/8 and 6/6. Formatting and
+warnings-as-errors agent Clippy passed. This remains pure validation: the
+production worker is disconnected and runtime remains disabled because the
+CI-only pinned DiskSpd/delete-on-close gate has not run. No physical inventory,
+benchmark, or write occurred.
+
+## 2026-10-20 — P0 and P2.5 verification refresh
+
+On `feature/p2.5-volume-eligibility-policy`, the safe local verification passed: locked Rust workspace tests (with two physical-device agent probes and two worker probes ignored), `cargo fmt --all -- --check`, warning-denying workspace Clippy, release build, `npm run test:main` (76/76), `npm run build`, and capture-disabled Windows UI smoke (42 mock-IPC assertions). Production npm audit found zero vulnerabilities. Full npm audit exited successfully at the High threshold with eight Moderate development-only `sprintf-js` records and no High/Critical findings. RustSec audits passed for both lockfiles. The pinned DiskSpd hash matches its manifest; the x64 Windows agent CycloneDX SBOM includes `partition11-core`.
+
+Live `main` remains `130868dbaf60a3dfa71f62f5d5086c985d792cc6`, with 5/5 successful Actions checks. Those runs do not validate this local branch. GitHub has no remote feature branch or open PR, so the required CI-only pinned DiskSpd/delete-on-close compatibility gate remains open. The feature runtime stays disabled; no worker launch, DiskSpd workload, physical inventory, scratch creation, or volume write occurred. Preserve all local modifications and do not commit, push, create a PR, merge, or run physical-device tests without new authorization.
+## 2026-10-20 — P3 local fuzz extension
+
+The Windows x64 ext-image fuzz target completed 601 seconds using nightly
+2026-10-17 and process-local MSVC 14.50: 10,091 inputs, exit code 0, 1,306
+coverage counters, 3,016 features, 138 new units, 1,034 MiB peak RSS, and no
+crash or timeout. The clean and recovery-pending e2fsprogs fixture copies were
+hash-verified before and after; source corpus was unchanged. A temporary batch
+launcher was inadvertently a third arbitrary-byte seed and was removed after
+the run. Temporary corpus output was removed after recording evidence. No
+persistent PATH/toolchain setting or physical disk was changed or accessed.
+The GitHub Ubuntu fuzz workflow and abrupt-host-crash policy remain open.
+## 2026-10-20 — P3 actual agent fixture check
+
+The freshly built x64 Windows agent ran its real `image-worker` protocol on the
+independent ext4 fixture: five root entries including `known.txt`, successful
+36-byte export to a unique temporary path, no leftover stage, and rejection of
+an existing-output collision without changing it. Fixture SHA-256 stayed
+unchanged. Temporary output was removed. This does not cover Electron UI/main
+integration, the unrun GitHub fuzz workflow, crash recovery, or hardware.
+## 2026-10-20 — P3 main-service integration and crash-cleanup research
+
+Pinned Node 24.21.0 ran the compiled Electron main image service through its
+default spawn path to the real Windows agent. Listing and the 36-byte fixture
+export passed, an existing destination remained unchanged, no stage remained,
+and the fixture hash was unchanged. The temporary harness/output directory was
+removed. Microsoft documentation confirms `FILE_DISPOSITION_INFO` cannot clear
+`FILE_FLAG_DELETE_ON_CLOSE`; the crash-recovery design remains pending and no
+cleanup behavior was modified. This is not a renderer/IPC or physical-device
+test.

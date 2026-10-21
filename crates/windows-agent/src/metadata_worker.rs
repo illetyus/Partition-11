@@ -131,6 +131,7 @@ fn metadata_to_wire(metadata: DiskMetadata) -> WireMetadata {
             })
             .map_err(error_to_wire),
         bus_type: metadata.bus_type.map_err(error_to_wire),
+        stable_identity: metadata.stable_identity.map_err(error_to_wire),
         partition_layout: metadata.partition_layout.map_err(error_to_wire),
     }
 }
@@ -177,6 +178,7 @@ fn metadata_from_wire(metadata: WireMetadata) -> DiskMetadata {
             })
             .map_err(error_from_wire),
         bus_type: metadata.bus_type.map_err(error_from_wire),
+        stable_identity: metadata.stable_identity.map_err(error_from_wire),
         partition_layout: metadata.partition_layout.map_err(error_from_wire),
     }
 }
@@ -695,6 +697,7 @@ mod tests {
                 physical: Some(512),
             }),
             bus_type: Ok(None),
+            stable_identity: Err(WireError::Unsupported),
             partition_layout: Ok(partition11_core::windows_layout::DriveLayout {
                 style: partition11_core::windows_layout::LayoutStyle::Raw,
                 occupied: Vec::new(),
@@ -739,6 +742,7 @@ mod tests {
                 physical: Some(512),
             }),
             bus_type: Ok(None),
+            stable_identity: Err(WireError::Unsupported),
             partition_layout: Ok(partition11_core::windows_layout::DriveLayout {
                 style: partition11_core::windows_layout::LayoutStyle::Raw,
                 occupied: Vec::new(),
@@ -778,6 +782,7 @@ mod tests {
                 physical: Some(512),
             }),
             bus_type: Ok(None),
+            stable_identity: Err(WireError::Unsupported),
             partition_layout: Ok(partition11_core::windows_layout::DriveLayout {
                 style: partition11_core::windows_layout::LayoutStyle::Raw,
                 occupied: Vec::new(),

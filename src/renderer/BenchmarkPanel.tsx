@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { BENCHMARK_PROFILES, type BenchmarkAvailability, type BenchmarkProfile, type BenchmarkReport } from "../shared/benchmark";
+import {
+  BENCHMARK_PROFILES, estimateWriteImpact,
+  type BenchmarkAvailability, type BenchmarkProfile, type BenchmarkReport
+} from "../shared/benchmark";
 import { displayedMeasurement } from "./benchmarkPresentation";
 import type { SampleDisk } from "./previewData";
 import "./benchmark.css";
@@ -25,8 +28,8 @@ function ProfileRow({ profile, report, diskId }: { profile: BenchmarkProfile; re
 
 export function BenchmarkPanel({ disk, availability, report = null }: Props) {
   const [details, setDetails] = useState(false);
-  const [testSize, setTestSize] = useState("1");
-  const [repetitions, setRepetitions] = useState("1");
+  const writeImpact = estimateWriteImpact({ warmupSeconds: 5, measurementSeconds: 15, repetitions: 1 });
+  const estimatedWriteGB = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 }).format(writeImpact.maxWriteBytes / 1_000_000_000);
   const hasEngine = availability.engineAvailable; // false in P2.5A by contract
   const trustedReport = hasEngine && report?.targetVolumeId === disk.id && !disk.id.startsWith("sample-") ? report : null;
   return (
@@ -67,18 +70,13 @@ export function BenchmarkPanel({ disk, availability, report = null }: Props) {
       <section className="surface benchmark-settings" aria-labelledby="benchmark-settings-title">
         <div className="bench-section-heading"><div><h2 id="benchmark-settings-title">Test ayarları</h2><p>Deneme profili · Henüz çalıştırılamaz</p></div></div>
         <div className="bench-settings-grid">
-          <label className="bench-field">Test dosyası boyutu
-            <select value={testSize} onChange={event => setTestSize(event.target.value)} aria-label="Test dosyası boyutu">
-              <option value="1">1 GiB</option><option value="2">2 GiB</option><option value="4">4 GiB</option>
-            </select>
-          </label>
-          <label className="bench-field">Tekrar sayısı
-            <select value={repetitions} onChange={event => setRepetitions(event.target.value)} aria-label="Tekrar sayısı">
-              <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-            </select>
-          </label>
+          <div className="bench-field"><span>Test dosyası boyutu</span><div className="bench-readonly-setting">1 GiB</div></div>
+          <div className="bench-field"><span>Tekrar sayısı</span><div className="bench-readonly-setting" data-testid="benchmark-repetitions">1</div></div>
           <div className="bench-field"><span>Isınma / ölçüm</span><div className="bench-readonly-setting">5 sn / 15 sn</div></div>
         </div>
+        <p className="bench-impact-estimate" data-testid="benchmark-impact-estimate">
+          {"Yazma profili i\u00E7in \u00FCst s\u0131n\u0131r: "}{estimatedWriteGB}{" GB yaz\u0131m ve "}{writeImpact.maxDurationSeconds}{" saniyeye kadar \u00E7al\u0131\u015Fma s\u00FCresi. Hesap 100 MB/sn yazma tavan\u0131n\u0131 ve kapatma pay\u0131n\u0131 i\u00E7er; her yazma testi i\u00E7in ayr\u0131 a\u00E7\u0131k onay gerekir."}
+        </p>
         <button className="bench-details-toggle" type="button" aria-expanded={details} aria-controls="benchmark-details"
           onClick={() => setDetails(v => !v)}>
           <span>IOPS ve gecikme ayrıntıları</span><span aria-hidden="true">{details ? "⌃" : "⌄"}</span>

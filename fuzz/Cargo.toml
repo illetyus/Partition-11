@@ -1,0 +1,21 @@
+[package]
+name = "partition11-ext-reader-fuzz"
+version = "0.1.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+partition11-ext-reader = { path = "../crates/ext-reader" }
+
+[[bin]]
+name = "ext_image"
+path = "fuzz_targets/ext_image.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

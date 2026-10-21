@@ -7,7 +7,7 @@
   "main": "dist/main/main/main.js",
   "scripts": {
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "test:main": "npm run build:main && node --test dist/main/main/ipc-policy.test.js dist/main/main/preload-contract.test.js dist/main/main/production-csp.test.js dist/main/main/preview-data.test.js dist/main/main/interface-policy.test.js dist/main/main/benchmark-preview.test.js dist/main/main/benchmarkXml.test.js dist/main/main/benchmarkPresentation.test.js dist/main/main/benchmarkPolicy.test.js dist/main/main/desktop-security.test.js dist/main/main/readOnlyDiskInventory.test.js",
+    "test:main": "npm run build:main && node --test dist/main/main/ipc-policy.test.js dist/main/main/preload-contract.test.js dist/main/main/production-csp.test.js dist/main/main/preview-data.test.js dist/main/main/interface-policy.test.js dist/main/main/benchmark-preview.test.js dist/main/main/benchmarkXml.test.js dist/main/main/benchmarkPresentation.test.js dist/main/main/benchmarkPolicy.test.js dist/main/main/desktop-security.test.js dist/main/main/readOnlyDiskInventory.test.js dist/main/main/imageInspection.test.js tests/diskspd-manifest.test.cjs",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
     "build": "npm run typecheck && npm run build:main && npm run build:renderer",
@@ -18,12 +18,10 @@
     "package:win:dir": "npm run build && npm run build:agent:win && electron-builder --win dir --x64 --publish never"
   },
   "dependencies": {
-    "@fluentui/react-components": "^9.60.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
     "fast-xml-parser": "5.7.0"
   },
   "devDependencies": {
+    "@fluentui/react-components": "^9.60.0",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
@@ -32,6 +30,8 @@
     "cross-env": "^10.0.0",
     "electron": "^44.5.0",
     "electron-builder": "^26.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "typescript": "^5.8.0",
     "vite": "^7.0.0",
     "wait-on": "^8.0.0"
@@ -45,6 +45,7 @@
     },
     "files": [
       "dist/**/*",
+      "!dist/main/**/*.test.js",
       "package.json",
       "LICENSE"
     ],
@@ -52,6 +53,22 @@
       {
         "from": "resources/agent/partition11-agent.exe",
         "to": "agent/partition11-agent.exe"
+      },
+      {
+        "from": "third_party/diskspd/amd64/diskspd.exe",
+        "to": "diskspd/amd64/diskspd.exe"
+      },
+      {
+        "from": "third_party/diskspd/LICENSE",
+        "to": "diskspd/LICENSE"
+      },
+      {
+        "from": "third_party/diskspd/manifest.json",
+        "to": "diskspd/manifest.json"
+      },
+      {
+        "from": "third_party/diskspd/diskspd.cdx.json",
+        "to": "diskspd/diskspd.cdx.json"
       }
     ],
     "win": {

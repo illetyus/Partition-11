@@ -69,6 +69,18 @@ pub const PHASE_0_CAPABILITIES: Capabilities = Capabilities {
     write_physical_disks: false,
 };
 
+/// Capabilities exposed by the local Windows read-only preview. This does not
+/// authorize formatting, filesystem repair, resizing, or physical writes.
+pub const READ_ONLY_PREVIEW_CAPABILITIES: Capabilities = Capabilities {
+    inspect_images: true,
+    inspect_physical_disks: true,
+    write_images: false,
+    write_physical_disks: false,
+};
+pub fn read_only_preview_capabilities() -> Capabilities {
+    READ_ONLY_PREVIEW_CAPABILITIES
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,13 +97,22 @@ mod tests {
     }
 
     #[test]
-    fn inspection_is_policy_allowed_but_not_yet_implemented() {
+    fn inspection_is_policy_allowed_without_granting_mutations() {
         for target in targets() {
             assert_eq!(
                 authorize(&target, Operation::Inspect),
                 Decision::AllowedReadOnly
             );
         }
+    }
+
+    #[test]
+    fn read_only_preview_exposes_only_inspection_capabilities() {
+        let capabilities = read_only_preview_capabilities();
+        assert!(capabilities.inspect_images);
+        assert!(capabilities.inspect_physical_disks);
+        assert!(!capabilities.write_images);
+        assert!(!capabilities.write_physical_disks);
     }
 
     #[test]

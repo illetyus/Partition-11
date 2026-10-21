@@ -1,7 +1,7 @@
 [package]
 name = "partition11-agent"
 version = "0.1.0"
-description = "Non-elevated diagnostic agent with SetupAPI discovery and metadata-only Win32 queries; no raw disk reads or writes"
+description = "Non-elevated storage diagnostics and consent-gated file benchmarking; no raw-disk access or destructive operations"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -13,3 +13,5 @@ path = "src/main.rs"
 
 [dependencies]
 partition11-core = { path = "../core" }
+partition11-ext-reader = { path = "../ext-reader" }
+partition11-benchmark-worker = { path = "../benchmark-worker" }

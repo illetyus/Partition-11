@@ -12,7 +12,7 @@ jobs:
   windows-ui:
     name: Windows 11 Electron UI, screenshots and unpacked app
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -35,6 +35,39 @@ jobs:
           }
       - name: Build read-only Windows disk agent
         run: npm run build:agent:win
+      - name: Install pinned CycloneDX Cargo SBOM tool
+        run: cargo install cargo-cyclonedx --locked --version 0.5.9
+      - name: Generate and validate Windows x64 agent SBOM
+        shell: pwsh
+        run: |
+          cargo cyclonedx --manifest-path crates/windows-agent/Cargo.toml --format json --target x86_64-pc-windows-msvc --target-in-filename --describe binaries --all --spec-version 1.5
+          if ($LASTEXITCODE -ne 0) { throw "Windows agent SBOM generation failed" }
+          $sbomPath = "crates/windows-agent/partition11-agent_bin_x86_64-pc-windows-msvc.cdx.json"
+          if (-not (Test-Path -LiteralPath $sbomPath -PathType Leaf)) { throw "Windows agent SBOM missing: $sbomPath" }
+          $bom = Get-Content -LiteralPath $sbomPath -Raw | ConvertFrom-Json
+          if ($bom.bomFormat -ne "CycloneDX" -or $bom.specVersion -ne "1.5") { throw "Unexpected Windows agent SBOM format/version" }
+          if ($bom.metadata.component.name -ne "partition11-agent") { throw "SBOM root component did not match the Windows agent" }
+          $requiredRustComponents = @(
+            @{ Name = "partition11-core"; Version = "0.1.0"; License = "MIT" },
+            @{ Name = "partition11-ext-reader"; Version = "0.1.0"; License = "MIT" },
+            @{ Name = "rust-fs-ext4"; Version = "0.8.0"; License = "MIT" }
+          )
+          foreach ($required in $requiredRustComponents) {
+            $matches = @($bom.components | Where-Object { $_.name -eq $required.Name })
+            if ($matches.Count -ne 1 -or $matches[0].version -ne $required.Version) {
+              throw "SBOM omitted or changed required component $($required.Name)@$($required.Version)"
+            }
+            $licenses = @($matches[0].licenses | ForEach-Object { if ($_.expression) { $_.expression } else { $_.license.id } })
+            if ($licenses -notcontains $required.License) { throw "SBOM license missing for $($required.Name)" }
+          }
+          $agentDependency = @($bom.dependencies | Where-Object { $_.ref -match "#partition11-agent@0\.1\.0$" })
+          $readerDependency = @($bom.dependencies | Where-Object { $_.ref -match "#partition11-ext-reader@0\.1\.0$" })
+          if ($agentDependency.Count -ne 1 -or $readerDependency.Count -ne 1 -or
+              $agentDependency[0].dependsOn -notcontains $readerDependency[0].ref -or
+              $readerDependency[0].dependsOn -notcontains "registry+https://github.com/rust-lang/crates.io-index#rust-fs-ext4@0.8.0") {
+            throw "SBOM dependency edges do not bind the Windows agent to the pinned ext4 reader"
+          }
+
       - name: Build checked TypeScript main, preload and React renderer
         run: npm run build
       - name: Enforce UI and storage capability safety tests
@@ -59,6 +92,31 @@ jobs:
           $capabilities = & $agent capabilities | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "Packaged agent capability smoke failed" }
           if ($capabilities.write_images -ne $false -or $capabilities.write_physical_disks -ne $false) { throw "Packaged agent write capability was not disabled" }
+          $sbomSource = "crates/windows-agent/partition11-agent_bin_x86_64-pc-windows-msvc.cdx.json"
+          $sbomDestination = "release/win-unpacked/resources/agent/partition11-agent.cdx.json"
+          if (-not (Test-Path -LiteralPath $sbomSource -PathType Leaf)) { throw "Windows agent SBOM missing before packaging" }
+          Copy-Item -LiteralPath $sbomSource -Destination $sbomDestination -Force
+          $packagedBom = Get-Content -LiteralPath $sbomDestination -Raw | ConvertFrom-Json
+          if ($packagedBom.bomFormat -ne "CycloneDX" -or $packagedBom.specVersion -ne "1.5") { throw "Packaged agent SBOM validation failed" }
+          $diskspd = "release/win-unpacked/resources/diskspd/amd64/diskspd.exe"
+          $diskspdLicense = "release/win-unpacked/resources/diskspd/LICENSE"
+          $diskspdManifestPath = "release/win-unpacked/resources/diskspd/manifest.json"
+          $diskspdBomPath = "release/win-unpacked/resources/diskspd/diskspd.cdx.json"
+          foreach ($required in @($diskspd, $diskspdLicense, $diskspdManifestPath, $diskspdBomPath)) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Packaged DiskSpd resource missing: $required" }
+          }
+          $diskspdManifest = Get-Content -LiteralPath $diskspdManifestPath -Raw | ConvertFrom-Json
+          $diskspdHash = (Get-FileHash -LiteralPath $diskspd -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($diskspdManifest.distributionStatus -ne "bundled-in-unsigned-preview" -or
+              $diskspdHash -ne $diskspdManifest.executableSha256) { throw "Packaged DiskSpd hash or distribution manifest mismatch" }
+          $diskspdBom = Get-Content -LiteralPath $diskspdBomPath -Raw | ConvertFrom-Json
+          $diskspdComponent = @($diskspdBom.components | Where-Object { $_.name -eq "Microsoft DiskSpd AMD64" })
+          if ($diskspdBom.bomFormat -ne "CycloneDX" -or $diskspdBom.specVersion -ne "1.5" -or
+              $diskspdComponent.Count -ne 1 -or $diskspdComponent[0].version -ne "2.3" -or
+              $diskspdComponent[0].licenses[0].license.id -ne "MIT" -or
+              $diskspdComponent[0].hashes[0].content -ne $diskspdManifest.executableSha256) {
+            throw "Packaged DiskSpd SBOM validation failed"
+          }
           Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/Partition-11-Windows-x64-preview.zip" -Force
       - name: Upload Electron Windows screenshot evidence
         if: always()
@@ -74,5 +132,13 @@ jobs:
         with:
           name: partition11-windows-x64-preview
           path: release/Partition-11-Windows-x64-preview.zip
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload Windows agent CycloneDX SBOM
+        if: success()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: partition11-agent-windows-x64-sbom
+          path: release/win-unpacked/resources/agent/partition11-agent.cdx.json
           retention-days: 14
           if-no-files-found: error

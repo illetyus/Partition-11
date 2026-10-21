@@ -1,0 +1,420 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "serialNumber": "urn:uuid:1518d235-a7b6-4071-a3fe-183c8ae4bb4e",
+  "metadata": {
+    "timestamp": "2026-10-20T07:18:30.533647900Z",
+    "tools": [
+      {
+        "vendor": "CycloneDX",
+        "name": "cargo-cyclonedx",
+        "version": "0.5.9"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "bom-ref": "path+file:///D:/Partition%2011/.worktrees/readonly-disk-preview/crates/windows-agent#partition11-agent@0.1.0",
+      "name": "partition11-agent",
+      "version": "0.1.0",
+      "description": "Non-elevated diagnostic agent with SetupAPI discovery and metadata-only Win32 queries; no raw disk reads or writes",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/partition11-agent@0.1.0?download_url=file://.#src/main.rs",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/illetyus/Partition-11"
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "cdx:rustc:sbom:target:triple",
+        "value": "x86_64-pc-windows-msvc"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "path+file:///D:/Partition%2011/.worktrees/readonly-disk-preview/crates/core#partition11-core@0.1.0",
+      "name": "partition11-core",
+      "version": "0.1.0",
+      "description": "Partition 11 safety policies and future operation orchestration",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/partition11-core@0.1.0?download_url=file://..\\core",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/illetyus/Partition-11"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "path+file:///D:/Partition%2011/.worktrees/readonly-disk-preview/crates/ext-reader#partition11-ext-reader@0.1.0",
+      "name": "partition11-ext-reader",
+      "version": "0.1.0",
+      "description": "Bounded read-only ext4 access for image files",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/partition11-ext-reader@0.1.0?download_url=file://..\\ext-reader",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/illetyus/Partition-11"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#bitflags@2.13.2",
+      "author": "The Rust Project Developers",
+      "name": "bitflags",
+      "version": "2.13.2",
+      "description": "A macro to generate structures which behave like bitflags. ",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "purl": "pkg:cargo/bitflags@2.13.2",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/bitflags"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/bitflags/bitflags"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/bitflags/bitflags"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#caseless@0.2.2",
+      "author": "Simon Sapin <simon.sapin@exyr.org>",
+      "name": "caseless",
+      "version": "0.2.2",
+      "description": "Unicode caseless matching",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8b6fd507454086c8edfd769ca6ada439193cdb209c7681712ef6275cccbfe5d8"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/caseless@0.2.2",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-rs/rust-caseless"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#crc32c@0.6.8",
+      "author": "Zack Owens",
+      "name": "crc32c",
+      "version": "0.6.8",
+      "description": "Safe implementation for hardware accelerated CRC32C instructions with software fallback",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3a47af21622d091a8f0fb295b88bc886ac74efcc613efc19f5d0b21de5c89e47"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "purl": "pkg:cargo/crc32c@0.6.8",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "http://docs.rs/crc32c"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/zowens/crc32c"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/zowens/crc32c"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#rust-fs-core@0.3.15",
+      "name": "rust-fs-core",
+      "version": "0.3.15",
+      "description": "Pure-Rust block-device framework — BlockRead/BlockDevice traits + FileDevice + CallbackDevice + LRU cache. Foundation crate for the rust-fs-* drivers and rust-img-* containers.",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e9add3fff0b1489e445f564b19771e43020ec67bb1c06da7f2350340c35dcee2"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/rust-fs-core@0.3.15",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/antimatter-studios/rust-fs-core"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#rust-fs-ext4@0.8.0",
+      "name": "rust-fs-ext4",
+      "version": "0.8.0",
+      "description": "Pure-Rust ext4 filesystem driver. Exposes a C ABI (fs_ext4_*) suitable for FFI from C/C++/Go/etc.",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "935fd35ddcd26853677042ffff62084b65273cf978031e2905a081af094d97a0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/rust-fs-ext4@0.8.0",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/antimatter-studios/rust-fs-ext4"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#rustc_version@0.4.1",
+      "name": "rustc_version",
+      "version": "0.4.1",
+      "description": "A library for querying the version of a installed rustc compiler",
+      "scope": "excluded",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "purl": "pkg:cargo/rustc_version@0.4.1",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/rustc_version/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/djc/rustc-version-rs"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#semver@1.0.28",
+      "author": "David Tolnay <dtolnay@gmail.com>",
+      "name": "semver",
+      "version": "1.0.28",
+      "description": "Parser and evaluator for Cargo's flavor of Semantic Versioning",
+      "scope": "excluded",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT OR Apache-2.0"
+        }
+      ],
+      "purl": "pkg:cargo/semver@1.0.28",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/semver"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/dtolnay/semver"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#tinyvec@1.13.3",
+      "author": "Lokathor <zefria@gmail.com>",
+      "name": "tinyvec",
+      "version": "1.13.3",
+      "description": "`tinyvec` provides 100% safe vec-like data structures.",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Zlib OR Apache-2.0 OR MIT"
+        }
+      ],
+      "purl": "pkg:cargo/tinyvec@1.13.3",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/Lokathor/tinyvec"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "registry+https://github.com/rust-lang/crates.io-index#unicode-normalization@0.1.26",
+      "author": "kwantam <kwantam@gmail.com>, Manish Goregaokar <manishsmail@gmail.com>",
+      "name": "unicode-normalization",
+      "version": "0.1.26",
+      "description": "This crate provides functions for normalization of Unicode strings, including Canonical and Compatible Decomposition and Recomposition, as described in Unicode Standard Annex #15. ",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "75cd3fb03d5288b3ba9a1ee103ac7e9cbb59f0b03d64f8ddfcc04dd42758a85d"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "(MIT OR Apache-2.0) AND Unicode-3.0"
+        }
+      ],
+      "purl": "pkg:cargo/unicode-normalization@0.1.26",
+      "externalReferences": [
+        {
+          "type": "documentation",
+          "url": "https://docs.rs/unicode-normalization/"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/unicode-rs/unicode-normalization"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/unicode-rs/unicode-normalization"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "path+file:///D:/Partition%2011/.worktrees/readonly-disk-preview/crates/core#partition11-core@0.1.0"
+    },
+    {
+      "ref": "path+file:///D:/Partition%2011/.worktrees/readonly-disk-preview/crates/ext-reader#partition11-ext-reader@0.1.0",
+      "dependsOn": [
+        "registry+https://github.com/rust-lang/crates.io-index#rust-fs-ext4@0.8.0"
+      ]
+    },
+    {
+      "ref": "path+file:///D:/Partition%2011/.worktrees/readonly-disk-preview/crates/windows-agent#partition11-agent@0.1.0",
+      "dependsOn": [
+        "path+file:///D:/Partition%2011/.worktrees/readonly-disk-preview/crates/core#partition11-core@0.1.0",
+        "path+file:///D:/Partition%2011/.worktrees/readonly-disk-preview/crates/ext-reader#partition11-ext-reader@0.1.0"
+      ]
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#bitflags@2.13.2"
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#caseless@0.2.2",
+      "dependsOn": [
+        "registry+https://github.com/rust-lang/crates.io-index#unicode-normalization@0.1.26"
+      ]
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#crc32c@0.6.8",
+      "dependsOn": [
+        "registry+https://github.com/rust-lang/crates.io-index#rustc_version@0.4.1"
+      ]
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#rust-fs-core@0.3.15"
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#rust-fs-ext4@0.8.0",
+      "dependsOn": [
+        "registry+https://github.com/rust-lang/crates.io-index#bitflags@2.13.2",
+        "registry+https://github.com/rust-lang/crates.io-index#caseless@0.2.2",
+        "registry+https://github.com/rust-lang/crates.io-index#crc32c@0.6.8",
+        "registry+https://github.com/rust-lang/crates.io-index#rust-fs-core@0.3.15",
+        "registry+https://github.com/rust-lang/crates.io-index#unicode-normalization@0.1.26"
+      ]
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#rustc_version@0.4.1",
+      "dependsOn": [
+        "registry+https://github.com/rust-lang/crates.io-index#semver@1.0.28"
+      ]
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#semver@1.0.28"
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#tinyvec@1.13.3"
+    },
+    {
+      "ref": "registry+https://github.com/rust-lang/crates.io-index#unicode-normalization@0.1.26",
+      "dependsOn": [
+        "registry+https://github.com/rust-lang/crates.io-index#tinyvec@1.13.3"
+      ]
+    }
+  ]
+}

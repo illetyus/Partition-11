@@ -33,6 +33,61 @@ jobs:
         shell: pwsh
         run: ./scripts/check-windows-sdk-abi.ps1
 
+  ext-reader-fuzz:
+    name: ext4 image parser fuzz smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # toolchain action
+        with:
+          toolchain: nightly-2026-10-17
+          components: rustfmt
+      - name: Install pinned cargo-fuzz
+        run: cargo install cargo-fuzz --locked --version 0.13.2
+      - name: Format fuzz target
+        run: cargo fmt --manifest-path fuzz/Cargo.toml --all -- --check
+      - name: Check the fuzz dependency lockfile
+        run: cargo check --manifest-path fuzz/Cargo.toml --locked
+      - name: Seed corpus with independent e2fsprogs image
+        shell: bash
+        run: |
+          mkdir -p fuzz/corpus/ext_image
+          cp crates/ext-reader/tests/fixtures/ext4-e2fsprogs-1.47.3.img \
+            fuzz/corpus/ext_image/e2fsprogs-1.47.3.img
+          cp crates/ext-reader/tests/fixtures/ext4-e2fsprogs-1.47.3-not-clean.img \
+            fuzz/corpus/ext_image/e2fsprogs-1.47.3-not-clean.img
+      - name: Build fuzz target
+        run: cargo fuzz build ext_image
+      - name: Run bounded fuzz smoke
+        run: cargo fuzz run ext_image -- -max_total_time=60 -timeout=10 -max_len=16777216
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ext-image-fuzz-artifacts
+          path: fuzz/artifacts/
+          retention-days: 14
+
+  dependency-audit:
+    name: Locked Cargo dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable ref snapshot
+        with:
+          toolchain: '1.99.1'
+      - name: Install pinned RustSec auditor outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: cargo install cargo-audit --locked --version 0.22.2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Audit the committed Cargo lockfile
+        working-directory: ${{ runner.temp }}
+        env:
+          LOCKFILE: ${{ github.workspace }}/Cargo.lock
+        run: |
+          cargo audit --file "$LOCKFILE"
+          cargo audit --file "$GITHUB_WORKSPACE/fuzz/Cargo.lock"
+
   electron:
     name: Electron TypeScript and renderer build
     runs-on: windows-latest
@@ -46,6 +101,10 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: npm ci --no-audit --no-fund
+      - name: Audit production npm dependencies (moderate and above)
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Audit full npm graph (high and critical)
+        run: npm audit --audit-level=high
       - name: Typecheck and bundle
         run: npm run build
       - name: IPC security policy tests

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
-  BENCHMARK_PROFILES, BENCHMARK_PREVIEW_AVAILABILITY, isFiniteMeasurement,
+  BENCHMARK_PROFILES, BENCHMARK_PREVIEW_AVAILABILITY, estimateWriteImpact, isFiniteMeasurement,
   type BenchmarkMeasurement
 } from "../shared/benchmark";
 
@@ -36,11 +36,38 @@ test("normalized measurement guard rejects nonfinite or negative values", () => 
   assert.equal(isFiniteMeasurement({ ...result, latencyAvgMs: -1 }), false);
 });
 
-test("P2.5A UI contains no active benchmark operation", () => {
+test("benchmark preview controls remain disabled behind the closed main-process gate", () => {
   const source = readFileSync(path.resolve("src/renderer/BenchmarkPanel.tsx"), "utf8");
   assert.match(source, /className="bench-primary" disabled/);
   assert.match(source, /data-testid="benchmark-cancel"/);
+  assert.match(source, /repetitions: 1/);
+  assert.doesNotMatch(source, /<option value="[23]">/);
   const mainSource = readFileSync(path.resolve("src/main/main.ts"), "utf8");
   assert.match(mainSource, /BENCHMARK_PREVIEW_AVAILABILITY/);
-  assert.doesNotMatch(mainSource, /IPC\.BENCHMARK_START/);
+  assert.match(mainSource, /const BENCHMARK_RUNTIME_ENABLED = false;/);
+  assert.match(mainSource, /runtimeAvailable: \(\) => BENCHMARK_RUNTIME_ENABLED/);
+  assert.match(mainSource, /IPC\.BENCHMARK_START/);
+  assert.match(mainSource, /IPC\.BENCHMARK_CANCEL/);
+  const startHandler = mainSource.match(/ipcMain\.handle\(IPC\.BENCHMARK_START,([\s\S]*?)\n  \}\);/);
+  const cancelHandler = mainSource.match(/ipcMain\.handle\(IPC\.BENCHMARK_CANCEL,([\s\S]*?)\n  \}\);/);
+  assert.ok(startHandler && /trustedRequest\(event\)/.test(startHandler[1]));
+  assert.ok(cancelHandler && /trustedRequest\(event\)/.test(cancelHandler[1]));
+});
+
+test("preview test-file size stays within the scratch lease's 1 GiB maximum", () => {
+  const source = readFileSync(path.resolve("src/renderer/BenchmarkPanel.tsx"), "utf8");
+  assert.match(source, /1 GiB/);
+  assert.doesNotMatch(source, /2 GiB|4 GiB/);
+});
+test("write-impact estimate includes the rate cap and termination allowance for one run", () => {
+  assert.deepEqual(estimateWriteImpact({ warmupSeconds: 5, measurementSeconds: 15, repetitions: 1 }), {
+    maxWriteBytes: 3_500_000_000,
+    maxDurationSeconds: 35
+  });
+});
+
+test("write-impact estimate rejects settings outside the bounded worker policy", () => {
+  assert.throws(() => estimateWriteImpact({ warmupSeconds: 16, measurementSeconds: 15, repetitions: 1 }));
+  assert.throws(() => estimateWriteImpact({ warmupSeconds: 5, measurementSeconds: 1, repetitions: 1 }));
+  assert.throws(() => estimateWriteImpact({ warmupSeconds: 5, measurementSeconds: 15, repetitions: 2 }));
 });

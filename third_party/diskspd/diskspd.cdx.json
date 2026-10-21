@@ -1,0 +1,74 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "bom-ref": "pkg:generic/partition-11/desktop@0.1.0",
+      "name": "Partition 11 Windows x64 Preview",
+      "version": "0.1.0"
+    }
+  },
+  "components": [
+    {
+      "type": "application",
+      "bom-ref": "pkg:generic/microsoft/diskspd@2.3?arch=amd64",
+      "name": "Microsoft DiskSpd AMD64",
+      "version": "2.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "dd4e57e1e8ccaf5d6437938f8aab7f17e9a1e6d8fba8a093006b7cadf16faea2"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/microsoft/diskspd/releases/download/v2.3/DiskSpd.ZIP"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/microsoft/diskspd"
+        },
+        {
+          "type": "license",
+          "url": "https://github.com/microsoft/diskspd/blob/master/LICENSE"
+        }
+      ],
+      "properties": [
+        {
+          "name": "binaryArchitecture",
+          "value": "amd64"
+        },
+        {
+          "name": "releaseTag",
+          "value": "v2.3"
+        },
+        {
+          "name": "xmlResultVersion",
+          "value": "2.3.0"
+        },
+        {
+          "name": "archiveSha256",
+          "value": "18609981e8b04b4f645f1fd182ad0541615fe71722de36a9a933c54f747218a3"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:generic/partition-11/desktop@0.1.0",
+      "dependsOn": [
+        "pkg:generic/microsoft/diskspd@2.3?arch=amd64"
+      ]
+    }
+  ]
+}

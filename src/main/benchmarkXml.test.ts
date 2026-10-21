@@ -6,11 +6,11 @@ import { parseDiskSpdXml, type TrustedDiskSpdRun } from "./benchmarkXml";
 
 const readContext: TrustedDiskSpdRun = {
   profileId: "seq1m-q8t1", direction: "read", ownedTargetPath: "P11Owned_A.bin",
-  pinnedEngineVersion: "2.3.0"
+  pinnedEngineVersion: "2.3.0", measurementSeconds: 15
 };
 const writeContext: TrustedDiskSpdRun = {
   profileId: "rnd4k-q32t1", direction: "write", ownedTargetPath: "P11Owned_B.bin",
-  pinnedEngineVersion: "2.3.0"
+  pinnedEngineVersion: "2.3.0", measurementSeconds: 15
 };
 const readXml = readFileSync(path.resolve("tests/benchmark-fixtures/seq-read.xml"), "utf8");
 const writeXml = readFileSync(path.resolve("tests/benchmark-fixtures/rnd-write.xml"), "utf8");
@@ -30,6 +30,21 @@ test("schema-faithful synthetic write fixture parses 4K Q32 and keeps direction"
   assert.ok(Math.abs(r.measurement.throughputMBps - 27.3066666667) < 1e-9);
   assert.ok(Math.abs(r.measurement.iops - 100000 / 15) < 1e-9);
   assert.equal(r.measurement.latencyP95Ms, 1.9);
+});
+test("rejects XML whose measured duration differs materially from the fixed request", () => {
+  const expected = { ...readContext, measurementSeconds: 15 };
+  assert.throws(() => parseDiskSpdXml(
+    readXml.replace("<TestTimeSeconds>15.00</TestTimeSeconds>", "<TestTimeSeconds>12.00</TestTimeSeconds>"), expected
+  ));
+  assert.throws(() => parseDiskSpdXml(
+    readXml.replace("<TestTimeSeconds>15.00</TestTimeSeconds>", "<TestTimeSeconds>18.00</TestTimeSeconds>"), expected
+  ));
+  assert.equal(parseDiskSpdXml(readXml, expected).durationSeconds, 15);
+  assert.equal(parseDiskSpdXml(
+    readXml.replace("<TestTimeSeconds>15.00</TestTimeSeconds>", "<TestTimeSeconds>16.50</TestTimeSeconds>"), expected
+  ).durationSeconds, 16.5);
+  assert.throws(() => parseDiskSpdXml(readXml, { ...readContext, measurementSeconds: 1 } as never));
+  assert.throws(() => parseDiskSpdXml(readXml, { ...readContext, pinnedEngineVersion: "9.9.0" } as never));
 });
 test("rejects invalid XML, DTD, nested entity, comments and excessive output", () => {
   for (const xml of [

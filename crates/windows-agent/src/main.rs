@@ -7,6 +7,10 @@
 // Win32 FFI has its own reviewed and bounded safety boundary. Do not add
 // unsafe code elsewhere in the agent or expose raw paths to the renderer.
 #[cfg(windows)]
+mod benchmark_protocol;
+#[cfg(windows)]
+mod benchmark_run;
+#[cfg(windows)]
 #[allow(unsafe_code)]
 mod disk_discovery;
 #[cfg(windows)]
@@ -30,8 +34,20 @@ mod overlapped_ioctl;
 mod pnp_notifications;
 #[cfg(windows)]
 mod scan_identity;
+#[cfg(any(windows, test))]
+#[allow(unsafe_code)]
+mod storage_identity;
+#[cfg(windows)]
+mod volume_eligibility;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod volume_inventory;
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod volume_mapping;
 
-use partition11_core::PHASE_0_CAPABILITIES;
+mod image_worker;
+use partition11_core::read_only_preview_capabilities;
 #[cfg(windows)]
 use std::thread::JoinHandle;
 #[cfg(windows)]
@@ -56,9 +72,9 @@ fn spawn_hard_deadline(
 fn main() {
     match (std::env::args().nth(1).as_deref(), std::env::args().nth(2)) {
         (Some("capabilities"), None) => {
-            let c = PHASE_0_CAPABILITIES;
+            let c = read_only_preview_capabilities();
             println!(
-                "{{\"protocol_version\":1,\"phase\":\"P0\",\"inspect_images\":{},\"inspect_physical_disks\":{},\"write_images\":{},\"write_physical_disks\":{}}}",
+                "{{\"protocol_version\":1,\"phase\":\"P3-preview\",\"inspect_images\":{},\"inspect_physical_disks\":{},\"write_images\":{},\"write_physical_disks\":{}}}",
                 c.inspect_images, c.inspect_physical_disks, c.write_images, c.write_physical_disks
             );
         }
@@ -98,7 +114,7 @@ fn main() {
                     let mut layouts = 0_usize;
                     let mut verified_partitions = 0_usize;
                     let mut unavailable = 0_usize;
-                    for result in &results {
+                    for result in &results.disks {
                         match result {
                             disk_metadata::ProbeOutcome::Ready(metadata) => {
                                 // Device number is only a temporary OS label.
@@ -124,7 +140,7 @@ fn main() {
                     }
                     println!(
                         r#"{{"protocol_version":1,"mode":"diagnostic-only","disk_interface_count":{},"temporarily_opened":{},"capacity_known":{},"logical_sector_known":{},"physical_sector_known":{},"bus_type_known":{},"layout_known":{},"verified_partition_count":{},"unavailable":{},"ui_disk_access_enabled":false}}"#,
-                        results.len(),
+                        results.disks.len(),
                         opened,
                         capacities,
                         logical_sectors,
@@ -141,6 +157,33 @@ fn main() {
                 }
             }
         }
+        (Some("image-worker"), None) => {
+            let status = image_worker::run_stdio_worker();
+            if status != 0 {
+                std::process::exit(status);
+            }
+        }
+        #[cfg(windows)]
+        (Some("benchmark-recovery"), None) => {
+            let status = partition11_benchmark_worker::recover_scratch_leases();
+            let status = match status {
+                partition11_benchmark_worker::ScratchRecoveryStatus::Clean => "clean",
+                partition11_benchmark_worker::ScratchRecoveryStatus::CleanupRequired => {
+                    "cleanup_required"
+                }
+                partition11_benchmark_worker::ScratchRecoveryStatus::Deferred => "deferred",
+            };
+            println!("{{\"protocol_version\":1,\"status\":\"{status}\"}}");
+        }
+        #[cfg(windows)]
+        (Some("benchmark-run"), None) => {
+            use std::io;
+            let status =
+                benchmark_run::run(io::BufReader::new(io::stdin()), &mut io::stdout().lock());
+            if status != 0 {
+                std::process::exit(status);
+            }
+        }
         #[cfg(windows)]
         (Some("inventory"), None) => {
             use std::io::{self, Write};
@@ -155,7 +198,7 @@ fn main() {
             let response = match disk_metadata::inspect_discovered_devices_with_timeout(
                 std::time::Duration::from_secs(30),
             ) {
-                Ok(disks) => inventory_protocol::encode_success(&request, &disks),
+                Ok(inventory) => inventory_protocol::encode_success(&request, &inventory),
                 Err(disk_metadata::ScanError::TimedOut) => {
                     Ok(inventory_protocol::encode_failure(&request, "scan_timeout"))
                 }
@@ -179,7 +222,7 @@ fn main() {
             let _ = io::stdout().flush();
         }
         _ => {
-            eprintln!("Partition 11 agent: bounded diagnostics and one-shot read-only inventory only. No disk writes exist.");
+            eprintln!("Partition 11 agent: bounded diagnostics and consent-gated file benchmarking only. Raw-disk and destructive writes are unavailable.");
             std::process::exit(2);
         }
     }

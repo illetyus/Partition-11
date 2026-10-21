@@ -133,19 +133,25 @@ impl ScanSnapshot {
         current: &[DiskInterface],
         disk_numbers: &[u32],
     ) -> Result<(), ScanIdentityError> {
-        if self.clock.load(Ordering::Acquire) != self.generation {
-            return Err(ScanIdentityError::Cancelled);
-        }
+        self.ensure_current()?;
         let result = verify_scan(
             &self.original,
             current,
             disk_numbers,
             self.started.elapsed(),
         );
+        self.ensure_current()?;
+        result
+    }
+
+    pub(crate) fn ensure_current(&self) -> Result<(), ScanIdentityError> {
         if self.clock.load(Ordering::Acquire) != self.generation {
             return Err(ScanIdentityError::Cancelled);
         }
-        result
+        if self.started.elapsed() > MAX_SCAN_AGE {
+            return Err(ScanIdentityError::Expired);
+        }
+        Ok(())
     }
 }
 
