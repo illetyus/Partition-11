@@ -23,6 +23,7 @@ export type PlannedDiskSpdWorkload = Readonly<{
   profileId: BenchmarkProfileId;
   direction: BenchmarkDirection;
   args: readonly string[];
+  measurementSeconds: number;
   expectedWrite: boolean;
   maxWallClockSeconds: number;
   estimatedMaxWriteBytes: number;
@@ -100,6 +101,7 @@ export function buildDiskSpdFileArgs(
     profileId: plan.profileId,
     direction: plan.direction,
     args: Object.freeze(args),
+    measurementSeconds: plan.measurementSeconds,
     expectedWrite: plan.direction === "write",
     maxWallClockSeconds,
     // Include the full parent hard-deadline allowance for every repetition.

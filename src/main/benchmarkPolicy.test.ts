@@ -19,6 +19,7 @@ test("DiskSpd presets generate fixed file-only flags with no shell", () => {
   const file = "C:\\p11-ci\\scratch.bin";
   const r = buildDiskSpdFileArgs(file, read);
   assert.deepEqual(r.args, ["-b1M", "-o8", "-t1", "-w0", "-W0", "-d2", "-L", "-Rxml", file]);
+  assert.equal(r.measurementSeconds, read.measurementSeconds);
   assert.equal(r.expectedWrite, false);
   assert.equal(r.estimatedMaxWriteBytes, 0);
   const w = buildDiskSpdFileArgs(file, write);
